@@ -17,21 +17,13 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-3">
-          {/* Rabota.ru Logo */}
-          <svg 
-            viewBox="0 0 120 28" 
-            className="h-7 w-auto"
-            aria-label="работа.ру"
+          {/* Rabota.ru Logo - Blue color matching the actual website */}
+          <span 
+            className="text-2xl font-bold tracking-tight"
+            style={{ color: '#4A7DFF' }}
           >
-            <text 
-              x="0" 
-              y="22" 
-              className="fill-primary font-bold" 
-              style={{ fontSize: '24px', fontFamily: 'system-ui, sans-serif', fontWeight: 700 }}
-            >
-              работа.ру
-            </text>
-          </svg>
+            работа.ру
+          </span>
           <div className="h-5 w-px bg-border" />
           <span className="text-sm font-medium text-muted-foreground">SkillVerify</span>
         </Link>

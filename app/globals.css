@@ -4,85 +4,90 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Rabota.ru brand colors: Red #E80200, White #FFFFFF */
-  --background: oklch(0.985 0.001 260);
-  --foreground: oklch(0.18 0.015 260);
+  /* Rabota.ru brand colors - based on actual website screenshot:
+     Logo: Blue #4A7DFF (medium blue)
+     CTA buttons: Coral #FF6B5B (salmon/coral)
+     Background: Light gray-blue #F5F7FA
+     Links: Blue */
+  --background: oklch(0.975 0.008 250);
+  --foreground: oklch(0.2 0.02 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.015 260);
+  --card-foreground: oklch(0.2 0.02 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.015 260);
-  /* Primary: Rabota.ru Red #E80200 */
-  --primary: oklch(0.53 0.24 27);
+  --popover-foreground: oklch(0.2 0.02 260);
+  /* Primary: Rabota.ru Coral/Salmon for CTAs #FF6B5B */
+  --primary: oklch(0.68 0.18 25);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.96 0.003 260);
-  --secondary-foreground: oklch(0.25 0.02 260);
-  --muted: oklch(0.965 0.003 260);
-  --muted-foreground: oklch(0.48 0.015 260);
-  --accent: oklch(0.97 0.015 27);
-  --accent-foreground: oklch(0.53 0.24 27);
-  --destructive: oklch(0.53 0.24 27);
+  /* Secondary: Rabota.ru Blue for logo/links #4A7DFF */
+  --secondary: oklch(0.96 0.01 250);
+  --secondary-foreground: oklch(0.55 0.2 260);
+  --muted: oklch(0.96 0.008 250);
+  --muted-foreground: oklch(0.5 0.02 260);
+  --accent: oklch(0.95 0.025 250);
+  --accent-foreground: oklch(0.55 0.2 260);
+  --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(1 0 0);
   --success: oklch(0.62 0.17 145);
   --success-foreground: oklch(1 0 0);
   --warning: oklch(0.78 0.14 75);
   --warning-foreground: oklch(0.25 0.03 75);
-  --border: oklch(0.92 0.003 260);
-  --input: oklch(0.94 0.003 260);
-  --ring: oklch(0.53 0.24 27);
-  --chart-1: oklch(0.53 0.24 27);
-  --chart-2: oklch(0.58 0.13 180);
-  --chart-3: oklch(0.52 0.08 260);
+  --border: oklch(0.91 0.008 250);
+  --input: oklch(0.96 0.005 250);
+  --ring: oklch(0.55 0.2 260);
+  --chart-1: oklch(0.68 0.18 25);
+  --chart-2: oklch(0.55 0.2 260);
+  --chart-3: oklch(0.62 0.17 145);
   --chart-4: oklch(0.78 0.14 75);
-  --chart-5: oklch(0.62 0.17 145);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.985 0.001 260);
-  --sidebar-foreground: oklch(0.18 0.015 260);
-  --sidebar-primary: oklch(0.53 0.24 27);
+  --chart-5: oklch(0.65 0.12 320);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.975 0.008 250);
+  --sidebar-foreground: oklch(0.2 0.02 260);
+  --sidebar-primary: oklch(0.68 0.18 25);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.97 0.015 27);
-  --sidebar-accent-foreground: oklch(0.53 0.24 27);
-  --sidebar-border: oklch(0.92 0.003 260);
-  --sidebar-ring: oklch(0.53 0.24 27);
+  --sidebar-accent: oklch(0.95 0.025 250);
+  --sidebar-accent-foreground: oklch(0.55 0.2 260);
+  --sidebar-border: oklch(0.91 0.008 250);
+  --sidebar-ring: oklch(0.55 0.2 260);
 }
 
 .dark {
   /* Rabota.ru dark theme adaptation */
-  --background: oklch(0.16 0.015 260);
-  --foreground: oklch(0.96 0.003 260);
-  --card: oklch(0.2 0.018 260);
-  --card-foreground: oklch(0.96 0.003 260);
-  --popover: oklch(0.2 0.018 260);
-  --popover-foreground: oklch(0.96 0.003 260);
-  --primary: oklch(0.6 0.22 27);
+  --background: oklch(0.16 0.015 255);
+  --foreground: oklch(0.96 0.005 250);
+  --card: oklch(0.2 0.018 255);
+  --card-foreground: oklch(0.96 0.005 250);
+  --popover: oklch(0.2 0.018 255);
+  --popover-foreground: oklch(0.96 0.005 250);
+  --primary: oklch(0.72 0.16 25);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.28 0.018 260);
-  --secondary-foreground: oklch(0.96 0.003 260);
-  --muted: oklch(0.24 0.015 260);
-  --muted-foreground: oklch(0.65 0.015 260);
-  --accent: oklch(0.28 0.04 27);
-  --accent-foreground: oklch(0.6 0.22 27);
-  --destructive: oklch(0.6 0.22 27);
+  --secondary: oklch(0.28 0.025 255);
+  --secondary-foreground: oklch(0.7 0.15 260);
+  --muted: oklch(0.24 0.015 255);
+  --muted-foreground: oklch(0.65 0.015 255);
+  --accent: oklch(0.28 0.035 255);
+  --accent-foreground: oklch(0.7 0.15 260);
+  --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(1 0 0);
   --success: oklch(0.62 0.17 145);
   --success-foreground: oklch(1 0 0);
   --warning: oklch(0.78 0.14 75);
   --warning-foreground: oklch(0.2 0.025 75);
-  --border: oklch(0.28 0.015 260);
-  --input: oklch(0.28 0.015 260);
-  --ring: oklch(0.6 0.22 27);
-  --chart-1: oklch(0.6 0.22 27);
-  --chart-2: oklch(0.62 0.13 180);
-  --chart-3: oklch(0.55 0.08 260);
+  --border: oklch(0.28 0.018 255);
+  --input: oklch(0.28 0.018 255);
+  --ring: oklch(0.7 0.15 260);
+  --chart-1: oklch(0.72 0.16 25);
+  --chart-2: oklch(0.7 0.15 260);
+  --chart-3: oklch(0.62 0.17 145);
   --chart-4: oklch(0.78 0.14 75);
-  --chart-5: oklch(0.62 0.17 145);
-  --sidebar: oklch(0.18 0.018 260);
-  --sidebar-foreground: oklch(0.96 0.003 260);
-  --sidebar-primary: oklch(0.6 0.22 27);
+  --chart-5: oklch(0.68 0.12 320);
+  --sidebar: oklch(0.18 0.018 255);
+  --sidebar-foreground: oklch(0.96 0.005 250);
+  --sidebar-primary: oklch(0.72 0.16 25);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.28 0.04 27);
-  --sidebar-accent-foreground: oklch(0.6 0.22 27);
-  --sidebar-border: oklch(0.28 0.015 260);
-  --sidebar-ring: oklch(0.6 0.22 27);
+  --sidebar-accent: oklch(0.28 0.035 255);
+  --sidebar-accent-foreground: oklch(0.7 0.15 260);
+  --sidebar-border: oklch(0.28 0.018 255);
+  --sidebar-ring: oklch(0.7 0.15 260);
 }
 
 @theme inline {

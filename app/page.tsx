@@ -327,24 +327,16 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <svg 
-                viewBox="0 0 120 28" 
-                className="h-6 w-auto"
-                aria-label="работа.ру"
+              <span 
+                className="text-xl font-bold tracking-tight"
+                style={{ color: '#4A7DFF' }}
               >
-                <text 
-                  x="0" 
-                  y="22" 
-                  className="fill-primary font-bold" 
-                  style={{ fontSize: '24px', fontFamily: 'system-ui, sans-serif', fontWeight: 700 }}
-                >
-                  работа.ру
-                </text>
-              </svg>
+                работа.ру
+              </span>
               <span className="text-sm text-muted-foreground">SkillVerify</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              2024 работа.ру. Все права защищены. Группа компаний HeadHunter.
+              2026 работа.ру. Все права защищены. Группа компаний HeadHunter.
             </p>
           </div>
         </div>

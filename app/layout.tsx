@@ -11,15 +11,15 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Работа.ру | SkillVerify - Верификация навыков',
+  title: 'работа.ру | SkillVerify - Верификация навыков',
   description: 'Платформа верификации профессиональных навыков с AI-проверкой и системой прокторинга',
   generator: 'v0.app',
 }
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#F8F9FA' },
-    { media: '(prefers-color-scheme: dark)', color: '#1A1A2E' },
+    { media: '(prefers-color-scheme: light)', color: '#FAFAFA' },
+    { media: '(prefers-color-scheme: dark)', color: '#262632' },
   ],
   width: 'device-width',
   initialScale: 1,

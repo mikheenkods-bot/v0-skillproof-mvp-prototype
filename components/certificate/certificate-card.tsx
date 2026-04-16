@@ -46,7 +46,7 @@ export function CertificateCard({
             </div>
             <div>
               <h3 className="font-bold text-lg">Сертификат SkillProof</h3>
-              <p className="text-sm text-muted-foreground">Работа.ру SkillVerify</p>
+              <p className="text-sm text-muted-foreground">работа.ру SkillVerify</p>
             </div>
           </div>
           <div className={cn(
@@ -130,7 +130,7 @@ export function CertificateCard({
         <div className="flex items-center justify-center gap-2 pt-2">
           <Shield className="h-4 w-4 text-primary" />
           <span className="text-sm text-muted-foreground">
-            Verified & Proctored by Работа.ру
+            Verified & Proctored by работа.ру
           </span>
         </div>
       </div>

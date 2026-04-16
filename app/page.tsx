@@ -69,7 +69,7 @@ export default function HomePage() {
             >
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
                 <Shield className="h-4 w-4" />
-                Verified & Proctored by Работа.ру
+                Verified & Proctored by работа.ру
               </div>
             </motion.div>
 
@@ -323,15 +323,28 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-8">
+      <footer className="border-t border-border py-8 bg-card">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
-              <span className="font-semibold">Работа.ру SkillVerify</span>
+            <div className="flex items-center gap-3">
+              <svg 
+                viewBox="0 0 120 28" 
+                className="h-6 w-auto"
+                aria-label="работа.ру"
+              >
+                <text 
+                  x="0" 
+                  y="22" 
+                  className="fill-primary font-bold" 
+                  style={{ fontSize: '24px', fontFamily: 'system-ui, sans-serif', fontWeight: 700 }}
+                >
+                  работа.ру
+                </text>
+              </svg>
+              <span className="text-sm text-muted-foreground">SkillVerify</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              2024 Работа.ру. Все права защищены.
+              2024 работа.ру. Все права защищены. Группа компаний HeadHunter.
             </p>
           </div>
         </div>

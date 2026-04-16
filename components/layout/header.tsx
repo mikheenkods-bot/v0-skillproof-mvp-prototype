@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/providers/app-provider'
-import { Sun, Moon, Shield, User, Briefcase } from 'lucide-react'
+import { Sun, Moon, User, Briefcase } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Header() {
@@ -16,14 +16,24 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <Shield className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-bold leading-none">Работа.ру</span>
-            <span className="text-xs text-muted-foreground">SkillVerify</span>
-          </div>
+        <Link href="/" className="flex items-center gap-3">
+          {/* Rabota.ru Logo */}
+          <svg 
+            viewBox="0 0 120 28" 
+            className="h-7 w-auto"
+            aria-label="работа.ру"
+          >
+            <text 
+              x="0" 
+              y="22" 
+              className="fill-primary font-bold" 
+              style={{ fontSize: '24px', fontFamily: 'system-ui, sans-serif', fontWeight: 700 }}
+            >
+              работа.ру
+            </text>
+          </svg>
+          <div className="h-5 w-px bg-border" />
+          <span className="text-sm font-medium text-muted-foreground">SkillVerify</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">

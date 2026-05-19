@@ -41,6 +41,16 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
+  // Attach stream to video element whenever stream or step changes
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream
+      videoRef.current.play().catch(err => {
+        console.log('[v0] Video play error:', err)
+      })
+    }
+  }, [stream, currentStep])
+
   // Request camera access
   const requestCameraAccess = useCallback(async () => {
     setIsProcessing(true)
@@ -57,12 +67,6 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
       })
       
       setStream(mediaStream)
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-        await videoRef.current.play()
-      }
-      
       setCurrentStep('face-detection')
     } catch (error) {
       setCameraError('Не удалось получить доступ к камере. Пожалуйста, разрешите доступ и попробуйте снова.')

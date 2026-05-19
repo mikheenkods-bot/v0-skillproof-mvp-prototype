@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { RulesModal } from '@/components/proctoring/rules-modal'
 import { ProctoringWidget } from '@/components/proctoring/proctoring-widget'
+import { IdentityVerification } from '@/components/proctoring/identity-verification'
 import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoring } from '@/hooks/use-proctoring'
 import { marketingQuestions, accountingQuestions, aiInterviewQuestions } from '@/lib/demo-data'
@@ -30,12 +31,14 @@ import {
   ArrowLeft
 } from 'lucide-react'
 
-type Stage = 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
 type Specialization = 'marketing' | 'accounting' | null
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
   { id: 'tabs', label: 'Закройте лишние вкладки браузера', description: 'Оставьте только эту вкладку' },
+  { id: 'alone', label: 'Убедитесь, что вы одни в комнате', description: 'Рядом не должно быть других людей' },
+  { id: 'camera', label: 'Подготовьте веб-камеру', description: 'Потребуется для верификации личности' },
   { id: 'id', label: 'Подготовьте документ, удостоверяющий личность', description: 'Может потребоваться для верификации' }
 ]
 
@@ -271,11 +274,35 @@ export default function SkillProofPage() {
                 size="lg"
                 className="w-full"
                 disabled={!allChecked}
-                onClick={() => setStage('specialization')}
+                onClick={() => setStage('identity-verification')}
               >
-                Продолжить
+                Пройти верификацию
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
+            </motion.div>
+          )}
+
+          {/* Identity Verification Stage */}
+          {stage === 'identity-verification' && (
+            <motion.div
+              key="identity-verification"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <Button 
+                variant="ghost" 
+                className="mb-6"
+                onClick={() => setStage('preparation')}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Назад
+              </Button>
+              
+              <IdentityVerification
+                onComplete={() => setStage('specialization')}
+                onCancel={() => setStage('preparation')}
+              />
             </motion.div>
           )}
 

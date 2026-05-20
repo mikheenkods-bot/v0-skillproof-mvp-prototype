@@ -70,8 +70,8 @@ export default function HomePage() {
       
       {/* Hero Section */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5" />
-        <div className="container mx-auto px-4 py-20 md:py-32">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 pointer-events-none" />
+        <div className="container mx-auto px-4 py-20 md:py-32 relative z-10">
           <div className="max-w-4xl mx-auto text-center">
             <motion.div
               initial={{ opacity: 0, y: 20 }}

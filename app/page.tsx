@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from 'framer-motion'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Header } from '@/components/layout/header'
 import { useApp } from '@/components/providers/app-provider'
@@ -52,6 +52,17 @@ const features = [
 
 export default function HomePage() {
   const { setUserRole } = useApp()
+  const router = useRouter()
+
+  const handleCandidateClick = () => {
+    setUserRole('candidate')
+    router.push('/candidate/skillproof')
+  }
+
+  const handleEmployerClick = () => {
+    setUserRole('employer')
+    router.push('/employer/dashboard')
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -99,29 +110,25 @@ export default function HomePage() {
               transition={{ duration: 0.5, delay: 0.3 }}
               className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
             >
-              <Link href="/candidate/skillproof">
-                <Button 
-                  size="lg" 
-                  className="w-full sm:w-auto text-base px-8"
-                  onClick={() => setUserRole('candidate')}
-                >
-                  <Users className="mr-2 h-5 w-5" />
-                  Я соискатель
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/employer/dashboard">
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="w-full sm:w-auto text-base px-8"
-                  onClick={() => setUserRole('employer')}
-                >
-                  <Building2 className="mr-2 h-5 w-5" />
-                  Я работодатель
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
+              <Button 
+                size="lg" 
+                className="w-full sm:w-auto text-base px-8"
+                onClick={handleCandidateClick}
+              >
+                <Users className="mr-2 h-5 w-5" />
+                Я соискатель
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Button 
+                size="lg" 
+                variant="outline" 
+                className="w-full sm:w-auto text-base px-8"
+                onClick={handleEmployerClick}
+              >
+                <Building2 className="mr-2 h-5 w-5" />
+                Я работодатель
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </motion.div>
           </div>
         </div>
@@ -307,16 +314,12 @@ export default function HomePage() {
               Присоединяйтесь к платформе, где навыки подтверждаются честно
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/candidate/skillproof">
-                <Button size="lg" onClick={() => setUserRole('candidate')}>
-                  Пройти верификацию
-                </Button>
-              </Link>
-              <Link href="/employer/dashboard">
-                <Button size="lg" variant="outline" onClick={() => setUserRole('employer')}>
-                  Найти кандидатов
-                </Button>
-              </Link>
+              <Button size="lg" onClick={handleCandidateClick}>
+                Пройти верификацию
+              </Button>
+              <Button size="lg" variant="outline" onClick={handleEmployerClick}>
+                Найти кандидатов
+              </Button>
             </div>
           </motion.div>
         </div>

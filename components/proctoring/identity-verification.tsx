@@ -99,6 +99,9 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
   }, [])
 
   // Face detection - check if video is actually playing with real frames
+  // Add timeout to show skip option if camera doesn't work
+  const [cameraTimeout, setCameraTimeout] = useState(false)
+  
   useEffect(() => {
     if (currentStep !== 'face-detection' || !stream || !videoRef.current) return
     
@@ -119,10 +122,11 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
         // Video is actually working - mark face as detected
         setFaceDetected(true)
         setMultipleFacesWarning(false)
+        setCameraTimeout(false)
       } else if (checkCount >= maxChecks) {
-        // After multiple checks, video still not working
-        setCameraError('Камера не передает видеопоток. Проверьте, что камера не занята другим приложением.')
-        setFaceDetected(false)
+        // After multiple checks, video still not working - show skip option
+        setCameraTimeout(true)
+        setCameraError('Камера не передает видеопоток. Вы можете пропустить этот шаг или проверить камеру.')
       }
     }
     
@@ -131,6 +135,14 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     
     return () => clearInterval(interval)
   }, [currentStep, stream])
+  
+  // Skip camera verification (for users without working camera)
+  const skipCameraVerification = useCallback(() => {
+    setFaceDetected(true)
+    setEnvironmentCheckPassed(true)
+    setCapturedPhoto('/placeholder-avatar.png') // Use placeholder
+    setCurrentStep('complete')
+  }, [])
 
   // Environment scan - check video is working during scan
   useEffect(() => {
@@ -433,13 +445,36 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
                 </div>
               )}
               
-              <Button 
-                className="w-full" 
-                onClick={() => setCurrentStep('environment-scan')}
-                disabled={!faceDetected || multipleFacesWarning}
-              >
-                Продолжить
-              </Button>
+              {cameraTimeout && !faceDetected && (
+                <div className="p-4 mb-4 rounded-lg bg-destructive/10 border border-destructive/20 text-sm">
+                  <div className="flex items-center gap-2 text-destructive mb-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Камера не работает
+                  </div>
+                  <p className="text-muted-foreground">
+                    Видеопоток не обнаружен. Проверьте, что камера не занята другим приложением, или пропустите этот шаг.
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex gap-3">
+                {cameraTimeout && !faceDetected && (
+                  <Button 
+                    variant="outline"
+                    className="flex-1" 
+                    onClick={skipCameraVerification}
+                  >
+                    Пропустить верификацию
+                  </Button>
+                )}
+                <Button 
+                  className={cameraTimeout && !faceDetected ? "flex-1" : "w-full"}
+                  onClick={() => setCurrentStep('environment-scan')}
+                  disabled={!faceDetected || multipleFacesWarning}
+                >
+                  Продолжить
+                </Button>
+              </div>
             </motion.div>
           )}
 

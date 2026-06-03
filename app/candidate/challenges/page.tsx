@@ -478,12 +478,24 @@ export default function ChallengesPage() {
               className="max-w-2xl mx-auto"
             >
               <div className="text-center mb-8">
-                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-success/10 mx-auto mb-6">
-                  <CheckCircle2 className="h-10 w-10 text-success" />
+                <div className={cn(
+                  "flex h-20 w-20 items-center justify-center rounded-2xl mx-auto mb-6",
+                  feedbackScore >= 50 ? "bg-success/10" : "bg-destructive/10"
+                )}>
+                  {feedbackScore >= 50 ? (
+                    <CheckCircle2 className="h-10 w-10 text-success" />
+                  ) : (
+                    <AlertTriangle className="h-10 w-10 text-destructive" />
+                  )}
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Решение принято!</h2>
+                <h2 className="text-2xl font-bold mb-2">
+                  {feedbackScore >= 50 ? 'Решение принято!' : 'Решение не принято'}
+                </h2>
                 <p className="text-muted-foreground">
-                  Ваше решение успешно проверено
+                  {feedbackScore >= 50 
+                    ? 'Ваше решение успешно проверено'
+                    : 'Решение не соответствует требованиям качества'
+                  }
                 </p>
               </div>
 
@@ -509,18 +521,56 @@ export default function ChallengesPage() {
                 <div className="space-y-3">
                   <h4 className="font-medium">Комментарии эксперта:</h4>
                   <div className="p-4 rounded-lg bg-muted/30 text-sm text-muted-foreground space-y-2">
-                    <p>Хорошо структурированное решение с понятной логикой изложения.</p>
-                    <p>Рекомендуется добавить больше конкретных цифр и метрик для оценки эффективности.</p>
-                    <p>Подход к анализу целевой аудитории показывает понимание специфики рынка.</p>
+                    {feedbackScore < 30 ? (
+                      <>
+                        <p>Решение не соответствует требованиям задания.</p>
+                        <p>Текст слишком короткий или не содержит конкретных идей и решений.</p>
+                        <p>Рекомендуется переосмыслить подход и предоставить развернутый ответ.</p>
+                      </>
+                    ) : feedbackScore < 50 ? (
+                      <>
+                        <p>Решение требует существенной доработки.</p>
+                        <p>Не хватает глубины анализа и конкретных предложений.</p>
+                        <p>Необходимо добавить больше деталей и обоснований.</p>
+                      </>
+                    ) : feedbackScore < 70 ? (
+                      <>
+                        <p>Решение показывает базовое понимание задачи.</p>
+                        <p>Рекомендуется добавить больше конкретных цифр и метрик.</p>
+                        <p>Структура ответа может быть улучшена.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p>Хорошо структурированное решение с понятной логикой изложения.</p>
+                        <p>Рекомендуется добавить больше конкретных цифр и метрик для оценки эффективности.</p>
+                        <p>Подход к анализу целевой аудитории показывает понимание специфики рынка.</p>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 p-4 rounded-lg bg-success/10 border border-success/20">
-                  <Shield className="h-5 w-5 text-success" />
-                  <span className="text-sm">
-                    Проверка на плагиат и AI-генерацию пройдена успешно
-                  </span>
-                </div>
+                {originality < 40 ? (
+                  <div className="flex items-center gap-2 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                    <span className="text-sm text-destructive">
+                      Низкий показатель оригинальности. Решение может содержать плагиат или быть сгенерировано AI.
+                    </span>
+                  </div>
+                ) : originality < 60 ? (
+                  <div className="flex items-center gap-2 p-4 rounded-lg bg-warning/10 border border-warning/20">
+                    <AlertTriangle className="h-5 w-5 text-warning" />
+                    <span className="text-sm">
+                      Оригинальность решения вызывает вопросы. Рекомендуется доработать.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-4 rounded-lg bg-success/10 border border-success/20">
+                    <Shield className="h-5 w-5 text-success" />
+                    <span className="text-sm">
+                      Проверка на плагиат и AI-генерацию пройдена успешно
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 flex gap-3">

@@ -422,7 +422,7 @@ window.addEventListener('message', function(event) {
               <div className="flex flex-wrap gap-3">
                 <Button asChild>
                   <a href="/embed" target="_blank">
-                    Открыть embed ��ерсию
+                    Открыть embed версию
                     <ExternalLink className="ml-2 h-4 w-4" />
                   </a>
                 </Button>

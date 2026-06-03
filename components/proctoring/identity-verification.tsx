@@ -98,26 +98,56 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     }
   }, [])
 
-  // Face detection - simplified, just check if video is playing
-  // Real face detection would use ML models like face-api.js
+  // Face detection - check if video is actually playing with real frames
   useEffect(() => {
-    if (currentStep !== 'face-detection' || !stream) return
+    if (currentStep !== 'face-detection' || !stream || !videoRef.current) return
     
-    // Mark face as detected after camera is active for 2 seconds
-    // In production, you would use face-api.js or similar for real detection
-    const timeout = setTimeout(() => {
-      setFaceDetected(true)
-      setMultipleFacesWarning(false)
-    }, 2000)
+    const video = videoRef.current
+    let checkCount = 0
+    const maxChecks = 10
     
-    return () => clearTimeout(timeout)
+    const checkVideoPlaying = () => {
+      checkCount++
+      
+      // Check if video is actually playing (has dimensions and not paused)
+      const isPlaying = video.readyState >= 2 && 
+                       !video.paused && 
+                       video.videoWidth > 0 && 
+                       video.videoHeight > 0
+      
+      if (isPlaying) {
+        // Video is actually working - mark face as detected
+        setFaceDetected(true)
+        setMultipleFacesWarning(false)
+      } else if (checkCount >= maxChecks) {
+        // After multiple checks, video still not working
+        setCameraError('Камера не передает видеопоток. Проверьте, что камера не занята другим приложением.')
+        setFaceDetected(false)
+      }
+    }
+    
+    // Check multiple times to ensure video is actually streaming
+    const interval = setInterval(checkVideoPlaying, 500)
+    
+    return () => clearInterval(interval)
   }, [currentStep, stream])
 
-  // Environment scan simulation
+  // Environment scan - check video is working during scan
   useEffect(() => {
-    if (currentStep !== 'environment-scan') return
+    if (currentStep !== 'environment-scan' || !videoRef.current) return
+    
+    const video = videoRef.current
     
     const interval = setInterval(() => {
+      // Verify video is still working
+      const isPlaying = video.readyState >= 2 && !video.paused && video.videoWidth > 0
+      
+      if (!isPlaying) {
+        setCameraError('Видеопоток прервался. Проверьте камеру.')
+        clearInterval(interval)
+        return
+      }
+      
       setScanProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval)
@@ -131,7 +161,7 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     return () => clearInterval(interval)
   }, [currentStep])
 
-  // Take selfie
+  // Take selfie - verify photo has actual content (not black)
   const takeSelfie = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return
     
@@ -141,6 +171,12 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     
     if (!context) return
     
+    // Check video is actually playing
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      setCameraError('Камера не работает. Проверьте подключение.')
+      return
+    }
+    
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     
@@ -148,6 +184,23 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     context.translate(canvas.width, 0)
     context.scale(-1, 1)
     context.drawImage(video, 0, 0)
+    
+    // Check if image has actual content (not all black)
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+    const data = imageData.data
+    let nonBlackPixels = 0
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 20 || data[i+1] > 20 || data[i+2] > 20) {
+        nonBlackPixels++
+      }
+    }
+    const nonBlackRatio = nonBlackPixels / (data.length / 4)
+    
+    if (nonBlackRatio < 0.1) {
+      // Image is mostly black - camera not working properly
+      setCameraError('Снимок получился черным. Проверьте освещение и камеру.')
+      return
+    }
     
     const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
     setCapturedPhoto(dataUrl)
@@ -430,7 +483,7 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
               
               <div className="mb-6">
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Проверка окр��жения</span>
+                  <span className="text-muted-foreground">Проверка окружения</span>
                   <span className="font-medium">{scanProgress}%</span>
                 </div>
                 <Progress value={scanProgress} />

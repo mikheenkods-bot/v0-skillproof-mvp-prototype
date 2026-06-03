@@ -131,7 +131,7 @@ export default function SkillProofPage() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect - calculate real score
+  // Analysis effect - calculate real score and save to localStorage
   useEffect(() => {
     if (stage !== 'analyzing') return
 
@@ -152,10 +152,58 @@ export default function SkillProofPage() {
           
           // Check if passed (4 out of 5 correct)
           const passed = specialization ? checkTestPassed(specialization, correct) : false
+          const isClean = proctoring.violations.length === 0
+          
+          // Save results to localStorage for profile
+          const now = new Date()
+          const dateStr = now.toLocaleDateString('ru-RU')
+          const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+          
+          // Generate skills based on questions
+          const skillCategories = [...new Set(questions.map(q => q.category))]
+          const skills = skillCategories.map(cat => {
+            const catQuestions = questions.filter(q => q.category === cat)
+            const catCorrect = catQuestions.filter(q => answers[q.id] === q.correctAnswer).length
+            return {
+              name: cat,
+              score: Math.round((catCorrect / catQuestions.length) * 100)
+            }
+          })
+          
+          // Save certificate if passed
+          if (passed) {
+            const certificate = {
+              id: certId,
+              specialization: specConfig?.name || 'Общий тест',
+              score,
+              isClean,
+              date: dateStr,
+              skills,
+              violations: proctoring.violations.length
+            }
+            
+            const existingCerts = JSON.parse(localStorage.getItem('skillverify_certificates') || '[]')
+            existingCerts.push(certificate)
+            localStorage.setItem('skillverify_certificates', JSON.stringify(existingCerts))
+          }
+          
+          // Save proctoring history
+          const proctoringSession = {
+            id: `proc-${Date.now()}`,
+            date: dateStr,
+            type: 'SkillProof',
+            specialization: specConfig?.name || 'Общий тест',
+            status: isClean ? 'clean' : 'violations',
+            violations: proctoring.violations.length
+          }
+          
+          const existingProctoring = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
+          existingProctoring.push(proctoringSession)
+          localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
           
           setTimeout(() => {
             setStage('result')
-            if (proctoring.violations.length === 0 && passed) {
+            if (isClean && passed) {
               confetti({
                 particleCount: 100,
                 spread: 70,
@@ -170,7 +218,7 @@ export default function SkillProofPage() {
     }, 100)
 
     return () => clearInterval(interval)
-  }, [stage, answers, questions, proctoring.violations.length, specialization])
+  }, [stage, answers, questions, proctoring.violations.length, specialization, specConfig?.name, proctoring.violations])
 
   // Shake effect on violation + take snapshot (with debounce)
   const lastViolationCountRef = useRef(0)
@@ -733,7 +781,7 @@ export default function SkillProofPage() {
                     onClick={handleNextQuestion}
                     disabled={answers[questions[currentQuestion].id] === undefined}
                   >
-                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-ин��ервью'}
+                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>

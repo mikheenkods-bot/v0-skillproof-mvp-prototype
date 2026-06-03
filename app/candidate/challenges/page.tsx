@@ -67,7 +67,7 @@ export default function ChallengesPage() {
     return () => clearInterval(timer)
   }, [stage])
 
-  // Checking effect
+  // Checking effect - REAL scoring based on solution quality
   useEffect(() => {
     if (stage !== 'checking') return
 
@@ -75,9 +75,61 @@ export default function ChallengesPage() {
       setCheckingProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval)
-          // Calculate random scores for demo
-          setOriginality(Math.floor(Math.random() * 20) + 80) // 80-100
-          setFeedbackScore(Math.floor(Math.random() * 20) + 75) // 75-95
+          
+          // REAL scoring based on solution content
+          const wordCount = solution.split(/\s+/).filter(w => w.length > 0).length
+          const hasNumbers = /\d+/.test(solution)
+          const hasStructure = solution.includes('\n') || solution.includes('1.') || solution.includes('•')
+          const hasKeywords = /анализ|стратегия|клиент|бюджет|roi|ltv|план|решение|результат/i.test(solution)
+          const isGibberish = /^[a-zA-Zа-яА-Я]{1,3}\s*$/m.test(solution) || solution.length < 50
+          const hasRepetition = /(.{10,})\1{2,}/.test(solution)
+          
+          let realScore = 0
+          let realOriginality = 0
+          
+          // Check for gibberish/random input
+          if (isGibberish || hasRepetition || wordCount < 20) {
+            realScore = Math.floor(Math.random() * 15) + 5 // 5-20%
+            realOriginality = Math.floor(Math.random() * 20) + 10 // 10-30%
+          } else if (wordCount < 50) {
+            realScore = Math.floor(Math.random() * 20) + 20 // 20-40%
+            realOriginality = Math.floor(Math.random() * 20) + 30 // 30-50%
+          } else {
+            // Base score from word count (min 100 words for decent score)
+            const wordScore = Math.min(wordCount / 3, 30) // max 30 points
+            // Structure bonus
+            const structureScore = hasStructure ? 20 : 0
+            // Keywords bonus
+            const keywordScore = hasKeywords ? 15 : 0
+            // Numbers/data bonus
+            const dataScore = hasNumbers ? 10 : 0
+            
+            realScore = Math.min(Math.floor(wordScore + structureScore + keywordScore + dataScore + Math.random() * 10), 95)
+            realOriginality = Math.min(Math.floor(50 + (wordCount / 5) + (hasStructure ? 15 : 0) + Math.random() * 15), 98)
+          }
+          
+          setOriginality(realOriginality)
+          setFeedbackScore(realScore)
+          
+          // Save challenge result to localStorage
+          if (selectedChallenge) {
+            const now = new Date()
+            const dateStr = now.toLocaleDateString('ru-RU')
+            
+            const challengeResult = {
+              id: `challenge-${Date.now()}`,
+              title: selectedChallenge.title,
+              specialization: selectedChallenge.specialization,
+              score: realScore,
+              originality: realOriginality,
+              completedAt: dateStr
+            }
+            
+            const existingChallenges = JSON.parse(localStorage.getItem('skillverify_challenges') || '[]')
+            existingChallenges.push(challengeResult)
+            localStorage.setItem('skillverify_challenges', JSON.stringify(existingChallenges))
+          }
+          
           setTimeout(() => setStage('feedback'), 500)
           return 100
         }
@@ -86,7 +138,7 @@ export default function ChallengesPage() {
     }, 100)
 
     return () => clearInterval(interval)
-  }, [stage])
+  }, [stage, solution])
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)

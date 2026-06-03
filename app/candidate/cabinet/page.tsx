@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -28,95 +28,141 @@ import {
   TrendingUp,
   FileText,
   Calendar,
-  ArrowLeft
+  ArrowLeft,
+  AlertCircle
 } from 'lucide-react'
 
-const userProfile = {
-  name: 'Иванов Иван Иванович',
-  email: 'ivanov@email.com',
-  phone: '+7 (999) 123-45-67',
-  location: 'Москва',
-  completeness: 85,
-  avatar: 'И'
+// Types for stored data
+interface StoredCertificate {
+  id: string
+  specialization: string
+  score: number
+  isClean: boolean
+  date: string
+  skills: { name: string; score: number }[]
+  violations: number
 }
 
-const certificates = [
-  {
-    id: 'SKILL-ABC123',
-    specialization: 'Маркетинг в недвижимости',
-    score: 87,
-    isClean: true,
-    date: '15.01.2024',
-    skills: [
-      { name: 'ROI-анализ', score: 90 },
-      { name: 'Лидогенерация', score: 85 },
-      { name: 'CRM-системы', score: 88 },
-      { name: 'Таргетинг', score: 82 },
-      { name: 'Договоры', score: 92 }
-    ]
-  }
-]
+interface StoredChallenge {
+  id: string
+  title: string
+  specialization: string
+  score: number
+  originality: number
+  completedAt: string
+}
 
-const completedChallenges = [
-  {
-    id: '1',
-    title: 'Разработать стратегию продаж для ЖК',
-    specialization: 'Маркетинг недвижимости',
-    score: 85,
-    originality: 95,
-    completedAt: '18.01.2024'
-  }
-]
+interface StoredProctoringSession {
+  id: string
+  date: string
+  type: string
+  specialization: string
+  status: 'clean' | 'violations'
+  violations: number
+}
 
-const proctoringHistory = [
-  {
-    id: '1',
-    date: '15.01.2024',
-    type: 'SkillProof',
-    specialization: 'Маркетинг в недвижимости',
-    status: 'clean',
-    violations: 0
-  },
-  {
-    id: '2',
-    date: '18.01.2024',
-    type: 'ChallengeGate',
-    specialization: 'Маркетинг недвижимости',
-    status: 'clean',
-    violations: 0
-  }
-]
+interface UserProfile {
+  name: string
+  email: string
+  phone: string
+  location: string
+  completeness: number
+  avatar: string
+}
 
-const recommendedJobs = [
-  {
-    id: '1',
-    title: 'Маркетолог недвижимости',
-    company: 'ГК ПИК',
-    location: 'Москва',
-    salary: '150 000 - 200 000 руб.',
-    match: 92
-  },
-  {
-    id: '2',
-    title: 'Специалист по продажам недвижимости',
-    company: 'А101',
-    location: 'Москва',
-    salary: '120 000 - 180 000 руб.',
-    match: 88
-  },
-  {
-    id: '3',
-    title: 'Digital-маркетолог',
-    company: 'Самолет',
-    location: 'Москва',
-    salary: '140 000 - 190 000 руб.',
-    match: 85
-  }
-]
+// Default profile - can be edited by user
+const defaultProfile: UserProfile = {
+  name: 'Новый пользователь',
+  email: 'user@email.com',
+  phone: '+7 (___) ___-__-__',
+  location: 'Не указан',
+  completeness: 20,
+  avatar: 'Н'
+}
 
 export default function CandidateCabinetPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'certificates' | 'challenges' | 'proctoring' | 'jobs'>('certificates')
+  const [userProfile, setUserProfile] = useState<UserProfile>(defaultProfile)
+  const [certificates, setCertificates] = useState<StoredCertificate[]>([])
+  const [completedChallenges, setCompletedChallenges] = useState<StoredChallenge[]>([])
+  const [proctoringHistory, setProctoringHistory] = useState<StoredProctoringSession[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Load data from localStorage on mount
+  useEffect(() => {
+    setIsLoading(true)
+    
+    try {
+      // Load user profile
+      const storedProfile = localStorage.getItem('skillverify_user_profile')
+      if (storedProfile) {
+        setUserProfile(JSON.parse(storedProfile))
+      }
+
+      // Load certificates (from completed SkillProof tests)
+      const storedCertificates = localStorage.getItem('skillverify_certificates')
+      if (storedCertificates) {
+        setCertificates(JSON.parse(storedCertificates))
+      }
+
+      // Load completed challenges
+      const storedChallenges = localStorage.getItem('skillverify_challenges')
+      if (storedChallenges) {
+        setCompletedChallenges(JSON.parse(storedChallenges))
+      }
+
+      // Load proctoring history
+      const storedProctoring = localStorage.getItem('skillverify_proctoring_history')
+      if (storedProctoring) {
+        setProctoringHistory(JSON.parse(storedProctoring))
+      }
+
+      // Calculate profile completeness
+      const hasName = storedProfile && JSON.parse(storedProfile).name !== defaultProfile.name
+      const hasCerts = storedCertificates && JSON.parse(storedCertificates).length > 0
+      const hasChallenges = storedChallenges && JSON.parse(storedChallenges).length > 0
+      
+      let completeness = 20 // base
+      if (hasName) completeness += 20
+      if (hasCerts) completeness += 30
+      if (hasChallenges) completeness += 30
+      
+      setUserProfile(prev => ({ ...prev, completeness: Math.min(completeness, 100) }))
+      
+    } catch (error) {
+      console.error('Error loading data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // Calculate recommended jobs based on skills
+  const recommendedJobs = certificates.length > 0 ? [
+    {
+      id: '1',
+      title: certificates[0].specialization.includes('Бухгалтер') ? 'Бухгалтер' : 
+             certificates[0].specialization.includes('Account') ? 'Account Manager' : 'Маркетолог',
+      company: 'Крупная компания',
+      location: 'Москва',
+      salary: '100 000 - 150 000 руб.',
+      match: Math.min(certificates[0].score + 5, 99)
+    }
+  ] : []
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-8 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Загрузка данных...</p>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -315,7 +361,7 @@ export default function CandidateCabinetPage() {
                           <div className="text-sm text-muted-foreground">Оценка</div>
                           <div className={cn(
                             "mt-2 text-sm",
-                            challenge.originality >= 80 ? "text-success" : "text-warning"
+                            challenge.originality >= 80 ? "text-success" : challenge.originality >= 50 ? "text-warning" : "text-destructive"
                           )}>
                             Оригинальность: {challenge.originality}%
                           </div>
@@ -345,50 +391,60 @@ export default function CandidateCabinetPage() {
                 animate={{ opacity: 1 }}
                 className="space-y-4"
               >
-                {proctoringHistory.map((session) => (
-                  <div
-                    key={session.id}
-                    className="rounded-xl border border-border bg-card p-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "flex h-10 w-10 items-center justify-center rounded-lg",
-                          session.status === 'clean' ? "bg-success/10" : "bg-warning/10"
-                        )}>
-                          <Shield className={cn(
-                            "h-5 w-5",
-                            session.status === 'clean' ? "text-success" : "text-warning"
-                          )} />
+                {proctoringHistory.length > 0 ? (
+                  proctoringHistory.map((session) => (
+                    <div
+                      key={session.id}
+                      className="rounded-xl border border-border bg-card p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-lg",
+                            session.status === 'clean' ? "bg-success/10" : "bg-warning/10"
+                          )}>
+                            <Shield className={cn(
+                              "h-5 w-5",
+                              session.status === 'clean' ? "text-success" : "text-warning"
+                            )} />
+                          </div>
+                          <div>
+                            <p className="font-medium">{session.type}: {session.specialization}</p>
+                            <p className="text-sm text-muted-foreground">{session.date}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{session.type}: {session.specialization}</p>
-                          <p className="text-sm text-muted-foreground">{session.date}</p>
+                        <div className="flex items-center gap-3">
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium",
+                            session.status === 'clean' 
+                              ? "bg-success/20 text-success" 
+                              : "bg-warning/20 text-warning"
+                          )}>
+                            {session.status === 'clean' ? (
+                              <>
+                                <CheckCircle2 className="h-3 w-3" />
+                                Чисто
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle className="h-3 w-3" />
+                                {session.violations} нарушений
+                              </>
+                            )}
+                          </span>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={cn(
-                          "inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium",
-                          session.status === 'clean' 
-                            ? "bg-success/20 text-success" 
-                            : "bg-warning/20 text-warning"
-                        )}>
-                          {session.status === 'clean' ? (
-                            <>
-                              <CheckCircle2 className="h-3 w-3" />
-                              Чисто
-                            </>
-                          ) : (
-                            <>
-                              <Shield className="h-3 w-3" />
-                              {session.violations} нарушений
-                            </>
-                          )}
-                        </span>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12 rounded-2xl border border-dashed border-border">
+                    <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Нет истории прокторинга</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Пройдите тестирование, чтобы история появилась
+                    </p>
                   </div>
-                ))}
+                )}
               </motion.div>
             )}
 
@@ -399,43 +455,58 @@ export default function CandidateCabinetPage() {
                 animate={{ opacity: 1 }}
                 className="space-y-4"
               >
-                <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 mb-6">
-                  <p className="text-sm">
-                    <span className="font-medium">Рекомендации подобраны</span> на основе ваших 
-                    верифицированных навыков и пройденных тестов
-                  </p>
-                </div>
-
-                {recommendedJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className="rounded-xl border border-border bg-card p-6 hover:border-primary/50 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold mb-1">{job.title}</h3>
-                        <p className="text-muted-foreground mb-3">{job.company}</p>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-4 w-4" />
-                            {job.location}
-                          </span>
-                          <span className="font-medium text-foreground">{job.salary}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-success/20 text-success text-sm font-medium">
-                          <TrendingUp className="h-4 w-4" />
-                          {job.match}% совпадение
-                        </div>
-                        <Button variant="ghost" size="sm" className="mt-2">
-                          Подробнее
-                          <ChevronRight className="ml-1 h-4 w-4" />
-                        </Button>
-                      </div>
+                {certificates.length > 0 ? (
+                  <>
+                    <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 mb-6">
+                      <p className="text-sm">
+                        <span className="font-medium">Рекомендации подобраны</span> на основе ваших 
+                        верифицированных навыков и пройденных тестов
+                      </p>
                     </div>
+
+                    {recommendedJobs.map((job) => (
+                      <div
+                        key={job.id}
+                        className="rounded-xl border border-border bg-card p-6 hover:border-primary/50 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="text-lg font-semibold mb-1">{job.title}</h3>
+                            <p className="text-muted-foreground mb-3">{job.company}</p>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-4 w-4" />
+                                {job.location}
+                              </span>
+                              <span className="font-medium text-foreground">{job.salary}</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-success/20 text-success text-sm font-medium">
+                              <TrendingUp className="h-4 w-4" />
+                              {job.match}% совпадение
+                            </div>
+                            <Button variant="ghost" size="sm" className="mt-2">
+                              Подробнее
+                              <ChevronRight className="ml-1 h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="text-center py-12 rounded-2xl border border-dashed border-border">
+                    <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Нет рекомендаций</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Пройдите тестирование SkillProof, чтобы получить персонализированные рекомендации вакансий
+                    </p>
+                    <Link href="/candidate/skillproof">
+                      <Button>Пройти тестирование</Button>
+                    </Link>
                   </div>
-                ))}
+                )}
               </motion.div>
             )}
           </div>

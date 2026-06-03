@@ -228,7 +228,9 @@ export default function EmployerDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {Math.round(candidates.filter(c => c.skillProofScore > 0).reduce((a, b) => a + b.skillProofScore, 0) / candidates.filter(c => c.skillProofScore > 0).length)}%
+                  {candidates.filter(c => c.skillProofScore > 0).length > 0 
+                    ? Math.round(candidates.filter(c => c.skillProofScore > 0).reduce((a, b) => a + b.skillProofScore, 0) / candidates.filter(c => c.skillProofScore > 0).length) + '%'
+                    : '—'}
                 </p>
                 <p className="text-sm text-muted-foreground">Средний балл</p>
               </div>

@@ -103,9 +103,21 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
   const [cameraTimeout, setCameraTimeout] = useState(false)
   
   useEffect(() => {
-    if (currentStep !== 'face-detection' || !stream || !videoRef.current) return
+    if (currentStep !== 'face-detection') return
+    
+    // If no stream after entering face-detection, wait for it
+    if (!stream) {
+      // Set timeout - if no stream after 5 seconds, allow skip
+      const timeout = setTimeout(() => {
+        setCameraTimeout(true)
+        setCameraError('Камера не передает видеопоток. Вы можете пропустить этот шаг.')
+      }, 5000)
+      return () => clearTimeout(timeout)
+    }
     
     const video = videoRef.current
+    if (!video) return
+    
     let checkCount = 0
     const maxChecks = 10
     

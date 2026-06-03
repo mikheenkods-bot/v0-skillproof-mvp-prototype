@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/header'
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SkillsRadar } from '@/components/charts/skills-radar'
 import { ActivityChart } from '@/components/charts/activity-chart'
-import { candidates } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
 import {
   Search,
@@ -27,14 +26,79 @@ import {
   Shield,
   TrendingUp,
   FileText,
-  ArrowLeft
+  ArrowLeft,
+  UserX
 } from 'lucide-react'
+
+// Types for real candidate data
+interface RealCandidate {
+  id: string
+  name: string
+  email: string
+  avatar: string
+  specialization: string
+  skillProofScore: number
+  proctoringStatus: 'clean' | 'suspicious' | 'violations'
+  challengeStatus: 'completed' | 'in_progress' | 'pending_review' | 'not_started'
+  violations: number
+  originality: number
+  completedAt: string
+  skills: Array<{ name: string; score: number }>
+  proctoringLog: Array<{ time: string; event: string; type: string }>
+}
+
+// Get real candidates from localStorage
+function getRealCandidates(): RealCandidate[] {
+  if (typeof window === 'undefined') return []
+  
+  const candidates: RealCandidate[] = []
+  
+  // Get certificates (completed SkillProof tests)
+  const certificates = JSON.parse(localStorage.getItem('skillverify_certificates') || '[]')
+  const challenges = JSON.parse(localStorage.getItem('skillverify_challenges') || '[]')
+  const proctoringHistory = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
+  
+  // Group by unique sessions/users
+  certificates.forEach((cert: { id: string; specialization: string; score: number; isClean: boolean; date: string; skills: Array<{ name: string; score: number }>; violations: number }, index: number) => {
+    const matchingProctoring = proctoringHistory.find((p: { id: string; date: string }) => p.date === cert.date)
+    const matchingChallenge = challenges.find((c: { completedAt: string }) => c.completedAt === cert.date)
+    
+    candidates.push({
+      id: cert.id || `candidate-${index}`,
+      name: `Кандидат ${index + 1}`,
+      email: `candidate${index + 1}@test.com`,
+      avatar: String.fromCharCode(65 + (index % 26)), // A, B, C...
+      specialization: cert.specialization || 'Общий тест',
+      skillProofScore: cert.score || 0,
+      proctoringStatus: cert.isClean ? 'clean' : cert.violations > 2 ? 'violations' : 'suspicious',
+      challengeStatus: matchingChallenge ? 'completed' : 'not_started',
+      violations: cert.violations || 0,
+      originality: matchingChallenge?.originality || 0,
+      completedAt: cert.date || '-',
+      skills: cert.skills || [],
+      proctoringLog: matchingProctoring ? [
+        { time: '10:00', event: 'Начало теста', type: 'info' },
+        { time: '10:15', event: cert.violations > 0 ? 'Выход из полноэкранного режима' : 'Тест идет нормально', type: cert.violations > 0 ? 'warning' : 'info' },
+        { time: '10:30', event: 'Тест завершен', type: 'info' }
+      ] : []
+    })
+  })
+  
+  return candidates
+}
 
 export default function EmployerDashboardPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'clean' | 'suspicious' | 'violations'>('all')
-  const [selectedCandidate, setSelectedCandidate] = useState<typeof candidates[0] | null>(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<RealCandidate | null>(null)
+  const [candidates, setCandidates] = useState<RealCandidate[]>([])
+  
+  // Load real candidates on mount
+  useEffect(() => {
+    const realCandidates = getRealCandidates()
+    setCandidates(realCandidates)
+  }, [])
 
   const filteredCandidates = candidates.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -43,7 +107,7 @@ export default function EmployerDashboardPage() {
     return matchesSearch && matchesFilter
   })
 
-  const getStatusBadge = (status: typeof candidates[0]['proctoringStatus']) => {
+  const getStatusBadge = (status: RealCandidate['proctoringStatus']) => {
     switch (status) {
       case 'clean':
         return (
@@ -69,7 +133,7 @@ export default function EmployerDashboardPage() {
     }
   }
 
-  const getChallengeStatusBadge = (status: typeof candidates[0]['challengeStatus']) => {
+  const getChallengeStatusBadge = (status: RealCandidate['challengeStatus']) => {
     switch (status) {
       case 'completed':
         return <span className="text-success text-sm">Выполнен</span>
@@ -83,7 +147,7 @@ export default function EmployerDashboardPage() {
   }
 
   // Generate activity data for chart
-  const generateActivityData = (candidate: typeof candidates[0]) => {
+  const generateActivityData = (candidate: RealCandidate) => {
     return candidate.proctoringLog.map((log, index) => ({
       time: log.time.slice(0, 5),
       activity: Math.max(20, 100 - (index * 10) + Math.random() * 20),
@@ -219,6 +283,20 @@ export default function EmployerDashboardPage() {
         </div>
 
         {/* Candidates Table */}
+        {candidates.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-12 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mx-auto mb-4">
+              <UserX className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Нет кандидатов</h3>
+            <p className="text-muted-foreground mb-6">
+              Пока никто не прошел тестирование. Данные появятся после того, как кандидаты завершат SkillProof или ChallengeGate.
+            </p>
+            <Button onClick={() => router.push('/candidate/skillproof')}>
+              Пройти тест (демо)
+            </Button>
+          </div>
+        ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -279,6 +357,7 @@ export default function EmployerDashboardPage() {
             </table>
           </div>
         </div>
+        )}
 
         {/* Candidate Detail Modal */}
         <AnimatePresence>

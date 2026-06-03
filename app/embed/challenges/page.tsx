@@ -61,7 +61,7 @@ function ChallengesContent() {
     return () => clearInterval(timer)
   }, [stage, timeRemaining])
 
-  // Analysis effect
+  // Analysis effect - REAL scoring based on solution quality
   useEffect(() => {
     if (!isAnalyzing) return
 
@@ -69,7 +69,35 @@ function ChallengesContent() {
       setAnalysisProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval)
-          const score = Math.floor(65 + Math.random() * 30)
+          
+          // REAL scoring based on solution content
+          const wordCount = solution.split(/\s+/).filter(w => w.length > 0).length
+          const hasNumbers = /\d+/.test(solution)
+          const hasStructure = solution.includes('\n') || solution.includes('1.') || solution.includes('•')
+          const hasKeywords = /анализ|стратегия|клиент|бюджет|roi|ltv|план|решение|результат/i.test(solution)
+          const isGibberish = /^[a-zA-Zа-яА-Я]{1,3}\s*$/m.test(solution) || solution.length < 50
+          const hasRepetition = /(.{10,})\1{2,}/.test(solution)
+          
+          let score = 0
+          
+          // Check for gibberish/random input
+          if (isGibberish || hasRepetition || wordCount < 20) {
+            score = Math.floor(Math.random() * 15) + 5 // 5-20%
+          } else if (wordCount < 50) {
+            score = Math.floor(Math.random() * 20) + 20 // 20-40%
+          } else {
+            // Base score from word count (min 100 words for decent score)
+            const wordScore = Math.min(wordCount / 3, 30) // max 30 points
+            // Structure bonus
+            const structureScore = hasStructure ? 20 : 0
+            // Keywords bonus
+            const keywordScore = hasKeywords ? 15 : 0
+            // Numbers/data bonus
+            const dataScore = hasNumbers ? 10 : 0
+            
+            score = Math.min(Math.floor(wordScore + structureScore + keywordScore + dataScore + Math.random() * 10), 95)
+          }
+          
           setFinalScore(score)
           setIsAnalyzing(false)
           setStage('result')
@@ -84,7 +112,7 @@ function ChallengesContent() {
     }, 80)
 
     return () => clearInterval(interval)
-  }, [isAnalyzing, selectedChallenge, notifyParent])
+  }, [isAnalyzing, selectedChallenge, notifyParent, solution])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -346,13 +374,17 @@ function ChallengesContent() {
                     <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                       <Award className="h-10 w-10 text-primary" />
                     </div>
-                    <h2 className="text-2xl font-bold">Результат: {finalScore}%</h2>
+                    <h2 className="text-2xl font-bold">
+                      {finalScore >= 50 ? `Результат: ${finalScore}%` : 'Решение не принято'}
+                    </h2>
                     <p className="text-muted-foreground mt-2 max-w-md">
                       {finalScore >= 80 
                         ? 'Отлично! Ваше решение демонстрирует глубокое понимание задачи.'
                         : finalScore >= 60
                         ? 'Хорошая работа! Есть области для улучшения.'
-                        : 'Рекомендуем пересмотреть подход к решению.'}
+                        : finalScore >= 50
+                        ? 'Удовлетворительно. Рекомендуем улучшить решение.'
+                        : 'Решение не соответствует требованиям. Текст слишком короткий или не содержит конкретных идей.'}
                     </p>
                     
                     <div className="w-full max-w-xs mt-6">

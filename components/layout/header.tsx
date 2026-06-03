@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/providers/app-provider'
-import { Sun, Moon, User, Briefcase } from 'lucide-react'
+import { Sun, Moon, User, Briefcase, Code } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Header() {
@@ -79,6 +79,16 @@ export function Header() {
                 )}
               >
                 Создать челлендж
+              </Link>
+              <Link 
+                href="/integration" 
+                className={cn(
+                  "text-sm font-medium transition-colors hover:text-primary flex items-center gap-1",
+                  pathname === '/integration' ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                <Code className="h-3.5 w-3.5" />
+                Интеграция
               </Link>
             </>
           )}

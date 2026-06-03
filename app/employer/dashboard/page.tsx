@@ -152,7 +152,7 @@ export default function EmployerDashboardPage() {
       time: log.time.slice(0, 5),
       activity: Math.max(20, 100 - (index * 10) + Math.random() * 20),
       event: log.event,
-      type: log.type
+      type: log.type as 'warning' | 'normal' | 'violation' | undefined
     }))
   }
 

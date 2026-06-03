@@ -518,11 +518,12 @@ export interface AnswerTimingResult {
 }
 
 // Expected minimum reading + thinking time by complexity (in ms)
+// These are VERY lenient - only flag extremely fast answers
 const COMPLEXITY_TIMES: Record<string, number> = {
-  easy: 5000,      // 5 seconds minimum for easy questions
-  medium: 10000,   // 10 seconds for medium
-  hard: 20000,     // 20 seconds for hard
-  complex: 30000,  // 30 seconds for complex
+  easy: 1000,      // 1 second minimum for easy questions (just clicking)
+  medium: 2000,    // 2 seconds for medium
+  hard: 3000,      // 3 seconds for hard  
+  complex: 5000,   // 5 seconds for complex
 }
 
 export function analyzeAnswerTiming(

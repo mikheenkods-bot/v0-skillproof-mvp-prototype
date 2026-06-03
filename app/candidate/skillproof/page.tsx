@@ -172,9 +172,12 @@ export default function SkillProofPage() {
     return () => clearInterval(interval)
   }, [stage, answers, questions, proctoring.violations.length, specialization])
 
-  // Shake effect on violation + take snapshot
+  // Shake effect on violation + take snapshot (with debounce)
+  const lastViolationCountRef = useRef(0)
   useEffect(() => {
-    if (proctoring.violations.length > 0) {
+    const currentCount = proctoring.violations.length
+    // Only trigger shake if violation count actually increased
+    if (currentCount > lastViolationCountRef.current) {
       setShake(true)
       setTimeout(() => setShake(false), 500)
       
@@ -184,7 +187,8 @@ export default function SkillProofPage() {
         media.takeViolationSnapshot(lastViolation?.description || 'Нарушение')
       }
     }
-  }, [proctoring.violations.length, mediaEnabled.camera, media])
+    lastViolationCountRef.current = currentCount
+  }, [proctoring.violations.length, proctoring.violations, mediaEnabled.camera, media])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)

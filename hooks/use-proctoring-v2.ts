@@ -494,6 +494,7 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
 
   /**
    * Check answer timing and return analysis
+   * Note: Only logs suspicious timing, does NOT add violation (user might just be fast)
    */
   const checkAnswerTiming = useCallback((
     complexity: string,
@@ -502,16 +503,18 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     const answerTime = Date.now() - questionStartTimeRef.current
     const result = analyzeAnswerTiming(complexity, answerTime, questionTextLength)
     
+    // Only log suspicious timing, don't add violation - user might be smart/fast
     if (result.isSuspicious && result.reason) {
-      addViolation('suspicious_timing', {
+      logEvent('suspicious_timing', {
         complexity,
         answerTimeMs: answerTime,
         expectedMinTimeMs: result.expectedMinTime,
+        isSuspicious: true,
       }, result.reason)
     }
     
     return result
-  }, [addViolation])
+  }, [logEvent])
 
   /**
    * Get final typing metrics for the current session

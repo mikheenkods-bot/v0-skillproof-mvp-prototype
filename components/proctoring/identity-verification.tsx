@@ -43,12 +43,28 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
 
   // Attach stream to video element whenever stream or step changes
   useEffect(() => {
-    if (stream && videoRef.current) {
-      videoRef.current.srcObject = stream
-      videoRef.current.play().catch(err => {
+    const video = videoRef.current
+    if (!video || !stream) return
+    
+    video.srcObject = stream
+    
+    // Ensure video plays
+    const playVideo = async () => {
+      try {
+        await video.play()
+      } catch (err) {
         console.log('[v0] Video play error:', err)
-      })
+        // Try again with muted (some browsers require this)
+        video.muted = true
+        try {
+          await video.play()
+        } catch (e) {
+          console.log('[v0] Video play retry failed:', e)
+        }
+      }
     }
+    
+    playVideo()
   }, [stream, currentStep])
 
   // Request camera access
@@ -75,30 +91,20 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     }
   }, [])
 
-  // Face detection simulation
+  // Face detection - simplified, just check if video is playing
+  // Real face detection would use ML models like face-api.js
   useEffect(() => {
-    if (currentStep !== 'face-detection') return
+    if (currentStep !== 'face-detection' || !stream) return
     
-    const detectFace = () => {
-      // Simulate face detection with random success
-      const detected = Math.random() > 0.3
-      const multipleFaces = Math.random() > 0.9
-      
-      setFaceDetected(detected)
-      setMultipleFacesWarning(multipleFaces && detected)
-    }
+    // Mark face as detected after camera is active for 2 seconds
+    // In production, you would use face-api.js or similar for real detection
+    const timeout = setTimeout(() => {
+      setFaceDetected(true)
+      setMultipleFacesWarning(false)
+    }, 2000)
     
-    // Initial detection after 1 second
-    const initialTimeout = setTimeout(detectFace, 1000)
-    
-    // Continuous detection
-    const interval = setInterval(detectFace, 2000)
-    
-    return () => {
-      clearTimeout(initialTimeout)
-      clearInterval(interval)
-    }
-  }, [currentStep])
+    return () => clearTimeout(timeout)
+  }, [currentStep, stream])
 
   // Environment scan simulation
   useEffect(() => {

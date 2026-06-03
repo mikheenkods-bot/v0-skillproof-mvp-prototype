@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,7 @@ import {
 
 type Stage = 'list' | 'workspace' | 'submitted' | 'result'
 
-export default function EmbedChallengesPage() {
+function ChallengesContent() {
   const searchParams = useSearchParams()
   const [stage, setStage] = useState<Stage>('list')
   const [selectedChallenge, setSelectedChallenge] = useState<typeof challenges[0] | null>(null)
@@ -387,5 +387,17 @@ export default function EmbedChallengesPage() {
         </AnimatePresence>
       </div>
     </div>
+  )
+}
+
+export default function EmbedChallengesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <ChallengesContent />
+    </Suspense>
   )
 }

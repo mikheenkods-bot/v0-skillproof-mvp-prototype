@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
@@ -12,11 +12,11 @@ import {
   ArrowRight,
   Award,
   Brain,
-  Target
+  Target,
+  Loader2
 } from 'lucide-react'
 
-// Embed landing - minimal version for iframe
-export default function EmbedLandingPage() {
+function EmbedLandingContent() {
   const searchParams = useSearchParams()
   const [config, setConfig] = useState({
     theme: 'light',
@@ -160,5 +160,17 @@ export default function EmbedLandingPage() {
         </motion.div>
       </AnimatePresence>
     </div>
+  )
+}
+
+export default function EmbedLandingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <EmbedLandingContent />
+    </Suspense>
   )
 }

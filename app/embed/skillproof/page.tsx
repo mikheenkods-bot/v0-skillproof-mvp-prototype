@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'next/navigation'
 import confetti from 'canvas-confetti'
@@ -46,7 +46,7 @@ const preparationChecklist = [
   { id: 'id', label: 'Подготовьте документ, удостоверяющий личность', description: 'Может потребоваться для верификации' }
 ]
 
-export default function EmbedSkillProofPage() {
+function SkillProofContent() {
   const searchParams = useSearchParams()
   const [stage, setStage] = useState<Stage>('preparation')
   const [specialization, setSpecialization] = useState<Specialization>(null)
@@ -594,5 +594,17 @@ export default function EmbedSkillProofPage() {
         </AnimatePresence>
       </div>
     </div>
+  )
+}
+
+export default function EmbedSkillProofPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <SkillProofContent />
+    </Suspense>
   )
 }

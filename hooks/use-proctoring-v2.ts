@@ -17,6 +17,12 @@ import {
   checkDevToolsOpen,
   calculateIntegrityScore
 } from '@/lib/proctoring/utils'
+import { 
+  TypingAnalyzer, 
+  TypingMetrics, 
+  SuspiciousPattern,
+  analyzeAnswerTiming 
+} from '@/lib/proctoring/typing-analytics'
 
 export interface UseProctoringV2Options {
   attemptId?: string
@@ -78,6 +84,7 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
   
   const [systemCheck, setSystemCheck] = useState<SystemCheckResult | null>(null)
   const [fullscreenPaused, setFullscreenPaused] = useState(false)
+  const [typingMetrics, setTypingMetrics] = useState<TypingMetrics | null>(null)
   
   const sequenceRef = useRef(0)
   const lastHashRef = useRef('genesis')
@@ -86,6 +93,9 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
   const focusLostTimeRef = useRef<number | null>(null)
   const devtoolsCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastResizeRef = useRef({ width: 0, height: 0 })
+  const typingAnalyzerRef = useRef<TypingAnalyzer>(new TypingAnalyzer())
+  const questionStartTimeRef = useRef<number>(0)
+  const lastTextRef = useRef<string>('')
 
   // Create and log an event
   const logEvent = useCallback(async (
@@ -432,10 +442,97 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     }
   }, [state.isActive, state.isTerminated, addViolation, logEvent, sendHeartbeat, heartbeatInterval])
 
+  // === Typing Analytics Methods ===
+  
+  /**
+   * Record a keystroke for typing pattern analysis
+   */
+  const recordKeystroke = useCallback((key: string) => {
+    if (!state.isActive || state.isTerminated) return
+    typingAnalyzerRef.current.recordKeystroke(key)
+  }, [state.isActive, state.isTerminated])
+
+  /**
+   * Record text change and detect copy-paste
+   */
+  const recordTextChange = useCallback((newText: string) => {
+    if (!state.isActive || state.isTerminated) return
+    
+    const suspiciousPatterns = typingAnalyzerRef.current.recordTextChange(newText)
+    
+    // Log suspicious patterns as violations
+    for (const pattern of suspiciousPatterns) {
+      if (pattern.severity === 'high') {
+        addViolation('paste_attempt', pattern.evidence, pattern.description)
+      } else if (pattern.severity === 'medium') {
+        logEvent('paste_attempt', pattern.evidence, pattern.description)
+        toast.warning('Подозрительный ввод', { description: pattern.description })
+      }
+    }
+    
+    lastTextRef.current = newText
+    
+    // Update metrics periodically
+    setTypingMetrics(typingAnalyzerRef.current.getMetrics())
+  }, [state.isActive, state.isTerminated, addViolation, logEvent])
+
+  /**
+   * Handle keydown event for typing analysis
+   */
+  const handleTypingKeydown = useCallback((e: KeyboardEvent) => {
+    recordKeystroke(e.key)
+  }, [recordKeystroke])
+
+  /**
+   * Start timing for a new question
+   */
+  const startQuestionTimer = useCallback(() => {
+    questionStartTimeRef.current = Date.now()
+    typingAnalyzerRef.current.reset()
+    lastTextRef.current = ''
+  }, [])
+
+  /**
+   * Check answer timing and return analysis
+   */
+  const checkAnswerTiming = useCallback((
+    complexity: string,
+    questionTextLength: number
+  ) => {
+    const answerTime = Date.now() - questionStartTimeRef.current
+    const result = analyzeAnswerTiming(complexity, answerTime, questionTextLength)
+    
+    if (result.isSuspicious && result.reason) {
+      addViolation('suspicious_timing', {
+        complexity,
+        answerTimeMs: answerTime,
+        expectedMinTimeMs: result.expectedMinTime,
+      }, result.reason)
+    }
+    
+    return result
+  }, [addViolation])
+
+  /**
+   * Get final typing metrics for the current session
+   */
+  const getTypingAnalysis = useCallback((): TypingMetrics | null => {
+    return typingAnalyzerRef.current.getMetrics()
+  }, [])
+
+  /**
+   * Get suspicious patterns detected
+   */
+  const getSuspiciousPatterns = useCallback((): SuspiciousPattern[] => {
+    const metrics = typingAnalyzerRef.current.getMetrics()
+    return metrics.suspiciousPatterns
+  }, [])
+
   return {
     state,
     systemCheck,
     fullscreenPaused,
+    typingMetrics,
     runSystemCheck,
     giveConsent,
     startSession,
@@ -444,6 +541,15 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     exitFullscreen,
     logEvent,
     addViolation,
+    
+    // Typing analytics methods
+    recordKeystroke,
+    recordTextChange,
+    handleTypingKeydown,
+    startQuestionTimer,
+    checkAnswerTiming,
+    getTypingAnalysis,
+    getSuspiciousPatterns,
     
     // Legacy compatibility
     isActive: state.isActive,

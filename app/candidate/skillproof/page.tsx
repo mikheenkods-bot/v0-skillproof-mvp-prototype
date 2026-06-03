@@ -173,6 +173,7 @@ export default function SkillProofPage() {
   const handleStartTest = () => {
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
+    proctoring.startQuestionTimer() // Start timing for first question
     setStage('testing')
     setQuestionStartTime(Date.now())
   }
@@ -180,12 +181,11 @@ export default function SkillProofPage() {
   const handleAnswer = (questionId: string, answer: number | string) => {
     if (isAnswerLocked) return // Prevent changing answer after submission
     
-    const timeSpent = Date.now() - questionStartTime
     const question = questions[currentQuestion]
     
     if (question.type === 'multiple_choice') {
-      // Record answer timing for proctoring analysis
-      proctoring.logEvent('answer_submitted', { timeSpent, complexity: question.complexity }, 'Ответ отправлен')
+      // Check answer timing using proctoring's typing analytics
+      proctoring.checkAnswerTiming(question.complexity, question.text.length)
       setAnswers(prev => ({ ...prev, [questionId]: answer }))
       // Lock answer and show explanation
       setIsAnswerLocked(true)
@@ -198,6 +198,7 @@ export default function SkillProofPage() {
   const handleNextQuestion = () => {
     setShowExplanation(false)
     setIsAnswerLocked(false)
+    proctoring.startQuestionTimer() // Reset timer for next question
     
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1)
@@ -210,8 +211,12 @@ export default function SkillProofPage() {
   const handleInterviewSubmit = () => {
     if (!interviewAnswer.trim()) return
     
+    // Record text for analysis before submitting
+    proctoring.recordTextChange(interviewAnswer)
+    
     setInterviewAnswers(prev => [...prev, interviewAnswer])
     setInterviewAnswer('')
+    proctoring.startQuestionTimer() // Reset for next question
     
     if (currentInterviewQuestion < aiQuestions.length - 1) {
       setCurrentInterviewQuestion(prev => prev + 1)
@@ -223,7 +228,13 @@ export default function SkillProofPage() {
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInterviewAnswer(e.target.value)
-    proctoring.logEvent('keystroke', { length: e.target.value.length }, 'Ввод текста')
+    // Record text change for copy-paste detection
+    proctoring.recordTextChange(e.target.value)
+  }
+
+  // Handle keydown for typing pattern analysis
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    proctoring.recordKeystroke(e.key)
   }
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
@@ -723,7 +734,29 @@ export default function SkillProofPage() {
                     className="min-h-[120px] resize-none mb-4"
                     value={interviewAnswer}
                     onChange={handleTextareaChange}
+                    onKeyDown={handleTextareaKeyDown}
                   />
+
+                  {/* Typing metrics display */}
+                  {proctoring.typingMetrics && proctoring.typingMetrics.currentWPM > 0 && (
+                    <div className="mb-4 p-3 rounded-lg bg-muted/50 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Скорость печати:</span>
+                        <span className={cn(
+                          "font-medium",
+                          proctoring.typingMetrics.currentWPM > 120 ? "text-destructive" : 
+                          proctoring.typingMetrics.currentWPM > 80 ? "text-warning" : "text-foreground"
+                        )}>
+                          {proctoring.typingMetrics.currentWPM} сл/мин
+                        </span>
+                      </div>
+                      {proctoring.typingMetrics.copyPasteDetected && (
+                        <p className="mt-1 text-xs text-destructive">
+                          Обнаружена вставка текста
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <Button
                     className="w-full"

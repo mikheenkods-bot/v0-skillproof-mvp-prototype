@@ -660,7 +660,7 @@ export default function SkillProofPage() {
                     onClick={handleNextQuestion}
                     disabled={answers[questions[currentQuestion].id] === undefined}
                   >
-                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
+                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-ин��ервью'}
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
@@ -910,19 +910,6 @@ export default function SkillProofPage() {
           )}
         </AnimatePresence>
       </main>
-    </div>
-  )
-}
-
-      {/* Rules Modal */}
-      <RulesModal
-        isOpen={showRulesModal}
-        onAccept={handleAcceptRules}
-        onClose={() => {
-          setShowRulesModal(false)
-          setSpecialization(null)
-        }}
-      />
     </div>
   )
 }

@@ -49,6 +49,7 @@ export function getEventSeverity(eventType: EventType): EventSeverity {
     keystroke: 'info',
     typing_burst: 'high',
     suspicious_input: 'high',
+    suspicious_timing: 'high',
     heartbeat: 'info',
     heartbeat_missed: 'medium',
     answer_submitted: 'info',

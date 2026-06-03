@@ -121,6 +121,7 @@ export const EVENT_WEIGHTS: Record<EventType, number> = {
   keystroke: 0,
   typing_burst: 20,
   suspicious_input: 25,
+  suspicious_timing: 20,
   heartbeat: 0,
   heartbeat_missed: 15,
   answer_submitted: 0,

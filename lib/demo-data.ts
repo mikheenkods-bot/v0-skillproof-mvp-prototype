@@ -30,6 +30,8 @@ export interface Challenge {
   difficulty: 'easy' | 'medium' | 'hard'
   completedCount: number
   averageScore: number
+  duration: number
+  company: string
 }
 
 export interface Question {
@@ -186,7 +188,9 @@ export const challenges: Challenge[] = [
     deadline: '48 часов',
     difficulty: 'hard',
     completedCount: 156,
-    averageScore: 78
+    averageScore: 78,
+    duration: 120,
+    company: 'ПИК'
   },
   {
     id: '2',
@@ -208,7 +212,9 @@ export const challenges: Challenge[] = [
     deadline: '48 часов',
     difficulty: 'hard',
     completedCount: 89,
-    averageScore: 72
+    averageScore: 72,
+    duration: 90,
+    company: 'Росбанк'
   },
   {
     id: '3',
@@ -227,7 +233,9 @@ export const challenges: Challenge[] = [
     deadline: '48 часов',
     difficulty: 'hard',
     completedCount: 67,
-    averageScore: 81
+    averageScore: 81,
+    duration: 90,
+    company: 'Яндекс'
   }
 ]
 
@@ -332,7 +340,7 @@ export const accountingQuestions: Question[] = [
     id: 'a3',
     text: 'Какой документ в 1С:Бухгалтерия используется для начисления заработной платы?',
     type: 'multiple_choice',
-    options: ['Начисление зарплаты', 'Платежное поручение', 'Расходный кассовый ордер', 'Операция'],
+    options: ['Начисление зарплат��', 'Платежное поручение', 'Расходный кассовый ордер', 'Операция'],
     correctAnswer: 0,
     explanation: 'Документ "Начисление зарплаты" формирует проводки по счетам 70, 68, 69 и рассчитывает НДФЛ и взносы.',
     complexity: 'easy',
@@ -340,7 +348,7 @@ export const accountingQuestions: Question[] = [
   },
   {
     id: 'a4',
-    text: 'Какие легальные способы оптимизации налогов доступны малому бизнесу на УСН?',
+    text: 'Какие легальные способы о��тимизации налогов доступны малому бизнесу на УСН?',
     type: 'multiple_choice',
     options: [
       'Дробление бизнеса',
@@ -472,7 +480,7 @@ export const accountManagerQuestions: Question[] = [
   },
   {
     id: 'am2',
-    text: 'Какое соотношение LTV к CAC принято считать минимально здоровым для устойчивой unit-экономики?',
+    text: 'Какое соотношение LTV к CAC принято считать минимально здоровы�� для устойчивой unit-экономики?',
     type: 'multiple_choice',
     options: ['1:1', '3:1', '1:3', '10:1'],
     correctAnswer: 1,

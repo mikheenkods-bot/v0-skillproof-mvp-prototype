@@ -171,7 +171,7 @@ function SkillProofContent() {
     
     const timeTaken = (Date.now() - questionStartTime) / 1000
     if (timeTaken < 3 && typeof answer === 'number') {
-      proctoring.recordFastAnswer()
+      proctoring.checkAnswerTiming('easy', timeTaken * 1000)
     }
     setAnswers(prev => ({ ...prev, [questionId]: answer }))
     // Lock answer and show explanation
@@ -433,7 +433,7 @@ function SkillProofContent() {
               </Button>
 
               <RulesModal
-                open={showRulesModal}
+                isOpen={showRulesModal}
                 onClose={() => setShowRulesModal(false)}
                 onAccept={() => {
                   setShowRulesModal(false)
@@ -454,7 +454,11 @@ function SkillProofContent() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <ProctoringWidget proctoring={proctoring} />
+              <ProctoringWidget 
+                isActive={proctoring.isActive}
+                violations={proctoring.violationCount}
+                maxViolations={proctoring.maxViolations}
+              />
 
               <Card className={cn(shake && "animate-shake")}>
                 <CardHeader>
@@ -519,7 +523,7 @@ function SkillProofContent() {
                       value={(answers[questions[currentQuestion].id] as string) || ''}
                       onChange={(e) => {
                         handleAnswerSelect(questions[currentQuestion].id, e.target.value)
-                        proctoring.recordKeystroke()
+                        proctoring.handleTyping(e.target.value)
                       }}
                       className="min-h-[120px]"
                     />
@@ -546,7 +550,11 @@ function SkillProofContent() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
-              <ProctoringWidget proctoring={proctoring} />
+              <ProctoringWidget 
+                isActive={proctoring.isActive}
+                violations={proctoring.violationCount}
+                maxViolations={proctoring.maxViolations}
+              />
 
               <Card>
                 <CardHeader>
@@ -582,7 +590,7 @@ function SkillProofContent() {
                       value={interviewAnswer}
                       onChange={(e) => {
                         setInterviewAnswer(e.target.value)
-                        proctoring.recordKeystroke()
+                        proctoring.handleTyping(e.target.value)
                       }}
                       className="flex-1"
                     />

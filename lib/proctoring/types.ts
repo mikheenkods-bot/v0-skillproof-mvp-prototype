@@ -21,6 +21,7 @@ export type EventType =
   | 'keystroke'
   | 'typing_burst'
   | 'suspicious_input'
+  | 'suspicious_timing'
   | 'heartbeat'
   | 'heartbeat_missed'
   | 'answer_submitted'

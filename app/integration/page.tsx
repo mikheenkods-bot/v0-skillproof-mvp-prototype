@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
@@ -22,11 +22,13 @@ const PLACEHOLDER_URL = 'https://your-domain.vercel.app'
 
 export default function IntegrationPage() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
-  const [baseUrl, setBaseUrl] = useState(PLACEHOLDER_URL)
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
-    setBaseUrl(window.location.origin)
+    setIsClient(true)
   }, [])
+
+  const baseUrl = isClient ? window.location.origin : PLACEHOLDER_URL
 
   const copyToClipboard = (code: string, id: string) => {
     navigator.clipboard.writeText(code)
@@ -34,7 +36,7 @@ export default function IntegrationPage() {
     setTimeout(() => setCopiedCode(null), 2000)
   }
 
-  const codeExamples = {
+  const codeExamples = useMemo(() => ({
     simple: `<!-- Простое встраивание через iframe -->
 <iframe 
   src="${baseUrl}/embed?module=all&theme=light"
@@ -156,7 +158,7 @@ widget.destroy();
 
 // Уничтожить все виджеты на странице
 SkillVerify.destroyAll();`
-  }
+  }), [baseUrl])
 
   const CodeBlock = ({ code, id }: { code: string; id: string }) => (
     <div className="relative">

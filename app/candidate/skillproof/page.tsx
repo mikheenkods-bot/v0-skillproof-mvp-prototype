@@ -11,9 +11,11 @@ import { Progress } from '@/components/ui/progress'
 import { ConsentModal } from '@/components/proctoring/consent-modal'
 import { FullscreenPauseModal } from '@/components/proctoring/fullscreen-pause-modal'
 import { ProctoringWidget } from '@/components/proctoring/proctoring-widget'
+import { CameraPreview, SnapshotFlash } from '@/components/proctoring/camera-preview'
 import { IdentityVerification } from '@/components/proctoring/identity-verification'
 import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoringV2 } from '@/hooks/use-proctoring-v2'
+import { useProctoringMedia } from '@/hooks/use-proctoring-media'
 import { 
   specializations, 
   getQuestionsForSpecialization, 
@@ -37,7 +39,8 @@ import {
   Brain,
   XCircle,
   ArrowLeft,
-  Info
+  Info,
+  Camera
 } from 'lucide-react'
 
 type Stage = 'consent' | 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
@@ -69,6 +72,8 @@ export default function SkillProofPage() {
   const [shake, setShake] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
+  const [mediaEnabled, setMediaEnabled] = useState({ camera: false, mic: false })
+  const [lastSnapshotReason, setLastSnapshotReason] = useState<string | undefined>()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Get questions and AI interview questions for selected specialization
@@ -83,8 +88,27 @@ export default function SkillProofPage() {
     specializationId: specialization || 'general',
     maxViolations: 3,
     onTerminate: () => {
+      // Take snapshot on termination
+      if (mediaEnabled.camera) {
+        media.takeViolationSnapshot('Тест прерван из-за нарушений')
+      }
       setStage('result')
       setFinalScore(0)
+    }
+  })
+
+  // Media (camera & microphone) for proctoring
+  const media = useProctoringMedia({
+    onViolationSnapshot: (imageData, reason) => {
+      setLastSnapshotReason(reason)
+      // Clear after 3 seconds
+      setTimeout(() => setLastSnapshotReason(undefined), 3000)
+      // Log the snapshot event
+      proctoring.logEvent('session_start', { hasSnapshot: true, reason }, `Фото при нарушении: ${reason}`)
+    },
+    onSpeechDetected: () => {
+      // Optional: log speech detection as suspicious
+      // proctoring.logEvent('suspicious_input', { type: 'speech' }, 'Обнаружена речь')
     }
   })
 
@@ -148,13 +172,19 @@ export default function SkillProofPage() {
     return () => clearInterval(interval)
   }, [stage, answers, questions, proctoring.violations.length, specialization])
 
-  // Shake effect on violation
+  // Shake effect on violation + take snapshot
   useEffect(() => {
     if (proctoring.violations.length > 0) {
       setShake(true)
       setTimeout(() => setShake(false), 500)
+      
+      // Take snapshot on violation if camera is enabled
+      if (mediaEnabled.camera && media.cameraState.isEnabled) {
+        const lastViolation = proctoring.violations[proctoring.violations.length - 1]
+        media.takeViolationSnapshot(lastViolation?.description || 'Нарушение')
+      }
     }
-  }, [proctoring.violations.length])
+  }, [proctoring.violations.length, mediaEnabled.camera, media])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -162,8 +192,20 @@ export default function SkillProofPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Handle consent acceptance
-  const handleConsentAccept = () => {
+  // Handle consent acceptance with camera/mic options
+  const handleConsentAccept = async (withCamera: boolean, withMic: boolean) => {
+    setMediaEnabled({ camera: withCamera, mic: withMic })
+    
+    // Enable camera if user agreed
+    if (withCamera) {
+      await media.enableCamera()
+    }
+    
+    // Enable microphone if user agreed
+    if (withMic) {
+      await media.enableMicrophone()
+    }
+    
     proctoring.giveConsent()
     proctoring.startSession()
     setShowConsentModal(false)
@@ -259,6 +301,23 @@ export default function SkillProofPage() {
         maxExits={3}
         onReturnToFullscreen={proctoring.enterFullscreen}
       />
+
+      {/* Camera Preview (shown during test) */}
+      {(stage === 'testing' || stage === 'ai-interview') && mediaEnabled.camera && (
+        <CameraPreview
+          stream={media.cameraState.stream}
+          isEnabled={media.cameraState.isEnabled}
+          isMicEnabled={media.micState.isEnabled}
+          volumeLevel={media.micState.volumeLevel}
+          isSpeechDetected={media.micState.isSpeechDetected}
+          lastSnapshotReason={lastSnapshotReason}
+          position="bottom-right"
+          showMicIndicator={mediaEnabled.mic}
+        />
+      )}
+
+      {/* Snapshot Flash Effect */}
+      <SnapshotFlash trigger={media.cameraState.snapshotCount} />
       
       <main className="container mx-auto px-4 py-8">
         <AnimatePresence mode="wait">

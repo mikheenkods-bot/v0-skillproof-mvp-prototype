@@ -8,11 +8,12 @@ import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
-import { RulesModal } from '@/components/proctoring/rules-modal'
+import { ConsentModal } from '@/components/proctoring/consent-modal'
+import { FullscreenPauseModal } from '@/components/proctoring/fullscreen-pause-modal'
 import { ProctoringWidget } from '@/components/proctoring/proctoring-widget'
 import { IdentityVerification } from '@/components/proctoring/identity-verification'
 import { CertificateCard } from '@/components/certificate/certificate-card'
-import { useProctoring } from '@/hooks/use-proctoring'
+import { useProctoringV2 } from '@/hooks/use-proctoring-v2'
 import { 
   specializations, 
   getQuestionsForSpecialization, 
@@ -39,7 +40,7 @@ import {
   Info
 } from 'lucide-react'
 
-type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'consent' | 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -51,11 +52,11 @@ const preparationChecklist = [
 
 export default function SkillProofPage() {
   const router = useRouter()
-  const [stage, setStage] = useState<Stage>('preparation')
+  const [stage, setStage] = useState<Stage>('consent')
   const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number | string>>({})
-  const [showRulesModal, setShowRulesModal] = useState(false)
+  const [showConsentModal, setShowConsentModal] = useState(true)
   const [preparationChecks, setPreparationChecks] = useState<Record<string, boolean>>({})
   const [timeRemaining, setTimeRemaining] = useState(30 * 60)
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now())
@@ -75,11 +76,18 @@ export default function SkillProofPage() {
   const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
   const specConfig = specialization ? specializations[specialization] : null
 
-  const proctoring = useProctoring({
+  // New proctoring v2 system
+  const proctoring = useProctoringV2({
+    sessionId: `skillproof-${Date.now()}`,
+    candidateId: 'current-user',
+    testType: specialization || 'general',
     maxViolations: 3,
     onTerminate: () => {
       setStage('result')
       setFinalScore(0)
+    },
+    onFullscreenExit: () => {
+      // Fullscreen exit is handled by the proctoring system
     }
   })
 
@@ -126,7 +134,7 @@ export default function SkillProofPage() {
           
           setTimeout(() => {
             setStage('result')
-            if (proctoring.violationCount === 0 && passed) {
+            if (proctoring.state.violations.length === 0 && passed) {
               confetti({
                 particleCount: 100,
                 spread: 70,
@@ -141,15 +149,15 @@ export default function SkillProofPage() {
     }, 100)
 
     return () => clearInterval(interval)
-  }, [stage, answers, questions, proctoring.violationCount, specialization])
+  }, [stage, answers, questions, proctoring.state.violations.length, specialization])
 
   // Shake effect on violation
   useEffect(() => {
-    if (proctoring.violationCount > 0) {
+    if (proctoring.state.violations.length > 0) {
       setShake(true)
       setTimeout(() => setShake(false), 500)
     }
-  }, [proctoring.violationCount])
+  }, [proctoring.state.violations.length])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -157,13 +165,18 @@ export default function SkillProofPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleStartTest = () => {
-    setShowRulesModal(true)
+  // Handle consent acceptance
+  const handleConsentAccept = async () => {
+    const started = await proctoring.startSession()
+    if (started) {
+      setShowConsentModal(false)
+      setStage('preparation')
+    }
   }
 
-  const handleAcceptRules = () => {
-    setShowRulesModal(false)
-    proctoring.startProctoring()
+  const handleStartTest = () => {
+    // Request fullscreen when starting test
+    proctoring.enterFullscreen()
     setStage('testing')
     setQuestionStartTime(Date.now())
   }
@@ -175,7 +188,8 @@ export default function SkillProofPage() {
     const question = questions[currentQuestion]
     
     if (question.type === 'multiple_choice') {
-      proctoring.checkAnswerTiming(question.complexity, timeSpent)
+      // Record answer timing for proctoring analysis
+      proctoring.recordAnswerTiming(timeSpent, question.complexity)
       setAnswers(prev => ({ ...prev, [questionId]: answer }))
       // Lock answer and show explanation
       setIsAnswerLocked(true)
@@ -206,15 +220,14 @@ export default function SkillProofPage() {
     if (currentInterviewQuestion < aiQuestions.length - 1) {
       setCurrentInterviewQuestion(prev => prev + 1)
     } else {
-      proctoring.stopProctoring()
+      proctoring.endSession()
       setStage('analyzing')
     }
   }
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value
-    setInterviewAnswer(value)
-    proctoring.handleTyping(value)
+    setInterviewAnswer(e.target.value)
+    proctoring.recordTyping(e.target.value)
   }
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
@@ -222,6 +235,22 @@ export default function SkillProofPage() {
   return (
     <div className={cn("min-h-screen bg-background", shake && "shake")}>
       <Header />
+      
+      {/* Consent Modal */}
+      <ConsentModal
+        isOpen={showConsentModal && stage === 'consent'}
+        onAccept={handleConsentAccept}
+        onDecline={() => router.push('/')}
+        systemCheck={proctoring.systemCheck}
+      />
+
+      {/* Fullscreen Pause Modal */}
+      <FullscreenPauseModal
+        isOpen={proctoring.state.isPaused && !proctoring.state.isFullscreen}
+        countdown={proctoring.fullscreenCountdown}
+        onResumeFullscreen={proctoring.enterFullscreen}
+        maxCountdown={10}
+      />
       
       <main className="container mx-auto px-4 py-8">
         <AnimatePresence mode="wait">
@@ -487,7 +516,7 @@ export default function SkillProofPage() {
           )}
 
           {/* Testing Stage */}
-          {stage === 'testing' && !proctoring.isTerminated && (
+          {stage === 'testing' && !proctoring.state.isTerminated && (
             <motion.div
               key="testing"
               initial={{ opacity: 0, y: 20 }}
@@ -495,6 +524,16 @@ export default function SkillProofPage() {
               exit={{ opacity: 0, y: -20 }}
               className="max-w-3xl mx-auto"
             >
+              {/* Proctoring Widget */}
+              <ProctoringWidget
+                isActive={proctoring.state.isActive}
+                violations={proctoring.state.violations}
+                integrityScore={proctoring.state.integrityScore}
+                maxViolations={3}
+                isFullscreen={proctoring.state.isFullscreen}
+                isPaused={proctoring.state.isPaused}
+              />
+
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -687,13 +726,13 @@ export default function SkillProofPage() {
                     onChange={handleTextareaChange}
                   />
 
-                  {proctoring.typingSpeed > 0 && (
+                  {proctoring.typingAnalysis.wpm > 0 && (
                     <p className={cn(
                       "text-xs mb-4",
-                      proctoring.typingSpeed > 120 ? "text-warning" : "text-muted-foreground"
+                      proctoring.typingAnalysis.wpm > 120 ? "text-warning" : "text-muted-foreground"
                     )}>
-                      Скорость печати: {proctoring.typingSpeed} сл/мин
-                      {proctoring.typingSpeed > 120 && " (подозрительно высокая)"}
+                      Скорость печати: {proctoring.typingAnalysis.wpm} сл/мин
+                      {proctoring.typingAnalysis.wpm > 120 && " (подозрительно высокая)"}
                     </p>
                   )}
 
@@ -748,14 +787,14 @@ export default function SkillProofPage() {
               exit={{ opacity: 0, y: -20 }}
               className="max-w-xl mx-auto"
             >
-              {proctoring.isTerminated ? (
+              {proctoring.state.isTerminated ? (
                 <div className="text-center py-12">
                   <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-destructive/10 mx-auto mb-6">
                     <XCircle className="h-10 w-10 text-destructive" />
                   </div>
                   <h2 className="text-2xl font-bold mb-2">Тест прерван</h2>
                   <p className="text-muted-foreground mb-6">
-                    Превышен лимит нарушений ({proctoring.violationCount}/{proctoring.maxViolations}).
+                    Превышен лимит нарушений ({proctoring.state.violations.length}/3).
                     Требуется пересдача под наблюдением.
                   </p>
                   <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 mb-8">
@@ -764,9 +803,9 @@ export default function SkillProofPage() {
                       <span>Зафиксированные нарушения:</span>
                     </div>
                     <ul className="mt-2 space-y-1 text-sm text-left">
-                      {proctoring.violations.map((v, i) => (
+                      {proctoring.state.violations.map((v, i) => (
                         <li key={i} className="text-muted-foreground">
-                          {v.timestamp.toLocaleTimeString()}: {v.description}
+                          {new Date(v.timestamp).toLocaleTimeString()}: {v.description}
                         </li>
                       ))}
                     </ul>
@@ -781,7 +820,7 @@ export default function SkillProofPage() {
                     candidateName="Иванов Иван Иванович"
                     specialization={specConfig?.name || ''}
                     score={finalScore}
-                    isClean={proctoring.violationCount === 0 && proctoring.suspiciousActivities.length === 0}
+                    isClean={proctoring.state.violations.length === 0 && proctoring.state.integrityScore >= 80}
                     date={new Date().toLocaleDateString('ru-RU')}
                     certificateId={`SKILL-${Date.now().toString(36).toUpperCase()}`}
                     onDownload={() => alert('Скачивание PDF...')}
@@ -789,6 +828,9 @@ export default function SkillProofPage() {
                   <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20 text-center">
                     <p className="text-success font-medium">
                       Поздравляем! Вы успешно прошли тест: {correctAnswersCount} из {questions.length} правильных ответов
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Integrity Score: {proctoring.state.integrityScore}%
                     </p>
                   </div>
                 </>
@@ -833,24 +875,21 @@ export default function SkillProofPage() {
                 </div>
               )}
 
-              {!proctoring.isTerminated && proctoring.violationCount > 0 && (
+              {!proctoring.state.isTerminated && proctoring.state.violations.length > 0 && (
                 <div className="mt-6 p-4 rounded-lg bg-warning/10 border border-warning/20">
                   <div className="flex items-center gap-2 text-warning text-sm mb-2">
                     <AlertTriangle className="h-4 w-4" />
                     <span>Зафиксированы подозрительные активности:</span>
                   </div>
                   <ul className="space-y-1 text-sm text-muted-foreground">
-                    {proctoring.violations.map((v, i) => (
+                    {proctoring.state.violations.map((v, i) => (
                       <li key={i}>{v.description}</li>
-                    ))}
-                    {proctoring.suspiciousActivities.map((a, i) => (
-                      <li key={`s-${i}`}>{a}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {!proctoring.isTerminated && (
+              {!proctoring.state.isTerminated && (
                 <div className="mt-6 flex gap-3">
                   <Button 
                     variant="outline" 
@@ -871,15 +910,9 @@ export default function SkillProofPage() {
           )}
         </AnimatePresence>
       </main>
-
-      {/* Proctoring Widget */}
-      {(stage === 'testing' || stage === 'ai-interview') && (
-        <ProctoringWidget
-          isActive={proctoring.isActive}
-          violations={proctoring.violationCount}
-          maxViolations={proctoring.maxViolations}
-        />
-      )}
+    </div>
+  )
+}
 
       {/* Rules Modal */}
       <RulesModal

@@ -78,10 +78,11 @@ export function ActivityChart({ data, className }: ActivityChartProps) {
             stroke="hsl(var(--primary))"
             strokeWidth={2}
             dot={(props) => {
-              const { cx, cy, payload } = props
+              const { cx, cy, payload, index } = props
               if (payload.type === 'violation') {
                 return (
                   <circle 
+                    key={`dot-${index}`}
                     cx={cx} 
                     cy={cy} 
                     r={6} 
@@ -94,6 +95,7 @@ export function ActivityChart({ data, className }: ActivityChartProps) {
               if (payload.type === 'warning') {
                 return (
                   <circle 
+                    key={`dot-${index}`}
                     cx={cx} 
                     cy={cy} 
                     r={5} 
@@ -105,6 +107,7 @@ export function ActivityChart({ data, className }: ActivityChartProps) {
               }
               return (
                 <circle 
+                  key={`dot-${index}`}
                   cx={cx} 
                   cy={cy} 
                   r={4} 

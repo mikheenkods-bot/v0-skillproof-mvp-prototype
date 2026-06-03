@@ -13,12 +13,19 @@ import { ProctoringWidget } from '@/components/proctoring/proctoring-widget'
 import { IdentityVerification } from '@/components/proctoring/identity-verification'
 import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoring } from '@/hooks/use-proctoring'
-import { marketingQuestions, accountingQuestions, aiInterviewQuestions } from '@/lib/demo-data'
+import { 
+  specializations, 
+  getQuestionsForSpecialization, 
+  getAIQuestionsForSpecialization,
+  checkTestPassed,
+  type SpecializationType 
+} from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
 import {
   Shield,
   Building2,
   Calculator,
+  Users,
   Clock,
   CheckCircle2,
   ChevronRight,
@@ -28,11 +35,11 @@ import {
   Loader2,
   Brain,
   XCircle,
-  ArrowLeft
+  ArrowLeft,
+  Info
 } from 'lucide-react'
 
 type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
-type Specialization = 'marketing' | 'accounting' | null
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -45,7 +52,7 @@ const preparationChecklist = [
 export default function SkillProofPage() {
   const router = useRouter()
   const [stage, setStage] = useState<Stage>('preparation')
-  const [specialization, setSpecialization] = useState<Specialization>(null)
+  const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number | string>>({})
   const [showRulesModal, setShowRulesModal] = useState(false)
@@ -57,10 +64,16 @@ export default function SkillProofPage() {
   const [interviewAnswers, setInterviewAnswers] = useState<string[]>([])
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [finalScore, setFinalScore] = useState(0)
+  const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
   const [shake, setShake] = useState(false)
+  const [showExplanation, setShowExplanation] = useState(false)
+  const [isAnswerLocked, setIsAnswerLocked] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const questions = specialization === 'marketing' ? marketingQuestions : accountingQuestions
+  // Get questions and AI interview questions for selected specialization
+  const questions = specialization ? getQuestionsForSpecialization(specialization) : []
+  const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
+  const specConfig = specialization ? specializations[specialization] : null
 
   const proctoring = useProctoring({
     maxViolations: 3,
@@ -89,7 +102,7 @@ export default function SkillProofPage() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect
+  // Analysis effect - calculate real score
   useEffect(() => {
     if (stage !== 'analyzing') return
 
@@ -97,21 +110,23 @@ export default function SkillProofPage() {
       setAnalysisProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval)
-          // Calculate score
+          // Calculate real score based on correct answers
           let correct = 0
           questions.forEach((q) => {
             if (q.type === 'multiple_choice' && answers[q.id] === q.correctAnswer) {
               correct++
-            } else if (q.type === 'open' && answers[q.id]) {
-              correct += 0.8 // partial credit for open questions
             }
           })
+          setCorrectAnswersCount(correct)
           const score = Math.round((correct / questions.length) * 100)
           setFinalScore(score)
           
+          // Check if passed (4 out of 5 correct)
+          const passed = specialization ? checkTestPassed(specialization, correct) : false
+          
           setTimeout(() => {
             setStage('result')
-            if (proctoring.violationCount === 0 && score >= 70) {
+            if (proctoring.violationCount === 0 && passed) {
               confetti({
                 particleCount: 100,
                 spread: 70,
@@ -126,7 +141,7 @@ export default function SkillProofPage() {
     }, 100)
 
     return () => clearInterval(interval)
-  }, [stage, answers, questions, proctoring.violationCount])
+  }, [stage, answers, questions, proctoring.violationCount, specialization])
 
   // Shake effect on violation
   useEffect(() => {
@@ -154,17 +169,26 @@ export default function SkillProofPage() {
   }
 
   const handleAnswer = (questionId: string, answer: number | string) => {
+    if (isAnswerLocked) return // Prevent changing answer after submission
+    
     const timeSpent = Date.now() - questionStartTime
     const question = questions[currentQuestion]
     
     if (question.type === 'multiple_choice') {
       proctoring.checkAnswerTiming(question.complexity, timeSpent)
+      setAnswers(prev => ({ ...prev, [questionId]: answer }))
+      // Lock answer and show explanation
+      setIsAnswerLocked(true)
+      setShowExplanation(true)
+    } else {
+      setAnswers(prev => ({ ...prev, [questionId]: answer }))
     }
-    
-    setAnswers(prev => ({ ...prev, [questionId]: answer }))
   }
 
   const handleNextQuestion = () => {
+    setShowExplanation(false)
+    setIsAnswerLocked(false)
+    
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1)
       setQuestionStartTime(Date.now())
@@ -179,7 +203,7 @@ export default function SkillProofPage() {
     setInterviewAnswers(prev => [...prev, interviewAnswer])
     setInterviewAnswer('')
     
-    if (currentInterviewQuestion < aiInterviewQuestions.length - 1) {
+    if (currentInterviewQuestion < aiQuestions.length - 1) {
       setCurrentInterviewQuestion(prev => prev + 1)
     } else {
       proctoring.stopProctoring()
@@ -313,16 +337,85 @@ export default function SkillProofPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="max-w-3xl mx-auto"
+              className="max-w-4xl mx-auto"
             >
               <div className="text-center mb-8">
                 <h1 className="text-3xl font-bold mb-2">Выберите специализацию</h1>
                 <p className="text-muted-foreground">
-                  Пройдите тестирование по вашему направлению
+                  Пройдите тестирование по вашему направлению. Для прохождения необходимо ответить правильно на 4 из 5 вопросов.
                 </p>
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
+                {/* Бухгалтер */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setSpecialization('accountant')
+                    handleStartTest()
+                  }}
+                  className={cn(
+                    "p-6 rounded-2xl border-2 text-left transition-all",
+                    specialization === 'accountant'
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  )}
+                >
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-500/10 mb-4">
+                    <Calculator className="h-7 w-7 text-emerald-600" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">Бухгалтер</h3>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    Проводки, НДС, ФСБУ, отчётность, балансовое уравнение
+                  </p>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      30 минут
+                    </span>
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <CheckCircle2 className="h-4 w-4" />
+                      5 вопросов
+                    </span>
+                  </div>
+                </motion.button>
+
+                {/* Account Manager */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setSpecialization('account_manager')
+                    handleStartTest()
+                  }}
+                  className={cn(
+                    "p-6 rounded-2xl border-2 text-left transition-all",
+                    specialization === 'account_manager'
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  )}
+                >
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-violet-500/10 mb-4">
+                    <Users className="h-7 w-7 text-violet-600" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">Account Manager</h3>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    LTV/CAC, unit-экономика, retention, ап-сейл, работа с возражениями
+                  </p>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      30 минут
+                    </span>
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <CheckCircle2 className="h-4 w-4" />
+                      5 вопросов
+                    </span>
+                  </div>
+                </motion.button>
+
+                {/* Маркетинг недвижимости */}
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -337,12 +430,12 @@ export default function SkillProofPage() {
                       : "border-border hover:border-primary/50"
                   )}
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 mb-4">
-                    <Building2 className="h-7 w-7 text-primary" />
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10 mb-4">
+                    <Building2 className="h-7 w-7 text-blue-600" />
                   </div>
                   <h3 className="text-xl font-bold mb-2">Маркетинг в недвижимости</h3>
                   <p className="text-muted-foreground text-sm mb-4">
-                    ROI-анализ, лидогенерация, CRM, таргетинг, работа с договорами
+                    ROI-анализ, лидогенерация, CRM, таргетинг
                   </p>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="flex items-center gap-1 text-muted-foreground">
@@ -356,6 +449,7 @@ export default function SkillProofPage() {
                   </div>
                 </motion.button>
 
+                {/* Бухгалтерия малого бизнеса */}
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -370,12 +464,12 @@ export default function SkillProofPage() {
                       : "border-border hover:border-primary/50"
                   )}
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-secondary/20 mb-4">
-                    <Calculator className="h-7 w-7 text-secondary-foreground" />
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-green-500/10 mb-4">
+                    <Calculator className="h-7 w-7 text-green-600" />
                   </div>
                   <h3 className="text-xl font-bold mb-2">Бухгалтерия малого бизнеса</h3>
                   <p className="text-muted-foreground text-sm mb-4">
-                    Налоги, отчетность, 1С, оптимизация, расчет зарплаты
+                    Налоги, отчетность, 1С, оптимизация
                   </p>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="flex items-center gap-1 text-muted-foreground">
@@ -452,30 +546,65 @@ export default function SkillProofPage() {
 
                 {questions[currentQuestion].type === 'multiple_choice' ? (
                   <div className="space-y-3">
-                    {questions[currentQuestion].options?.map((option, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleAnswer(questions[currentQuestion].id, index)}
-                        className={cn(
-                          "w-full p-4 rounded-xl border-2 text-left transition-all",
-                          answers[questions[currentQuestion].id] === index
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium",
-                            answers[questions[currentQuestion].id] === index
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-muted-foreground"
-                          )}>
-                            {String.fromCharCode(65 + index)}
+                    {questions[currentQuestion].options?.map((option, index) => {
+                      const isSelected = answers[questions[currentQuestion].id] === index
+                      const isCorrect = questions[currentQuestion].correctAnswer === index
+                      const showResult = showExplanation && isAnswerLocked
+                      
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleAnswer(questions[currentQuestion].id, index)}
+                          disabled={isAnswerLocked}
+                          className={cn(
+                            "w-full p-4 rounded-xl border-2 text-left transition-all",
+                            !showResult && isSelected && "border-primary bg-primary/5",
+                            !showResult && !isSelected && "border-border hover:border-primary/50",
+                            showResult && isCorrect && "border-success bg-success/10",
+                            showResult && isSelected && !isCorrect && "border-destructive bg-destructive/10",
+                            isAnswerLocked && "cursor-default"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium",
+                              !showResult && isSelected && "border-primary bg-primary text-primary-foreground",
+                              !showResult && !isSelected && "border-muted-foreground",
+                              showResult && isCorrect && "border-success bg-success text-success-foreground",
+                              showResult && isSelected && !isCorrect && "border-destructive bg-destructive text-destructive-foreground"
+                            )}>
+                              {showResult && isCorrect ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ) : showResult && isSelected && !isCorrect ? (
+                                <XCircle className="h-4 w-4" />
+                              ) : (
+                                String.fromCharCode(65 + index)
+                              )}
+                            </div>
+                            <span>{option}</span>
                           </div>
-                          <span>{option}</span>
+                        </button>
+                      )
+                    })}
+                    
+                    {/* Explanation after answer */}
+                    {showExplanation && questions[currentQuestion].explanation && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-4 p-4 rounded-xl bg-muted/50 border border-border"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-medium text-sm mb-1">Пояснение:</p>
+                            <p className="text-sm text-muted-foreground">
+                              {questions[currentQuestion].explanation}
+                            </p>
+                          </div>
                         </div>
-                      </button>
-                    ))}
+                      </motion.div>
+                    )}
                   </div>
                 ) : (
                   <Textarea
@@ -501,7 +630,7 @@ export default function SkillProofPage() {
           )}
 
           {/* AI Interview Stage */}
-          {stage === 'ai-interview' && !proctoring.isTerminated && (
+          {stage === 'ai-interview' && !proctoring.isTerminated && aiQuestions.length > 0 && (
             <motion.div
               key="ai-interview"
               initial={{ opacity: 0, y: 20 }}
@@ -515,6 +644,11 @@ export default function SkillProofPage() {
                     <Brain className="h-4 w-4" />
                     AI-интервью
                   </div>
+                  {specConfig && (
+                    <span className="text-sm text-muted-foreground">
+                      {specConfig.name}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted font-mono text-lg font-bold">
                   <Clock className="h-5 w-5" />
@@ -523,9 +657,9 @@ export default function SkillProofPage() {
               </div>
 
               <div className="mb-4">
-                <Progress value={((currentInterviewQuestion + 1) / aiInterviewQuestions.length) * 100} />
+                <Progress value={((currentInterviewQuestion + 1) / aiQuestions.length) * 100} />
                 <p className="text-sm text-muted-foreground mt-2">
-                  Вопрос {currentInterviewQuestion + 1} из {aiInterviewQuestions.length}
+                  Вопрос {currentInterviewQuestion + 1} из {aiQuestions.length}
                 </p>
               </div>
 
@@ -538,7 +672,7 @@ export default function SkillProofPage() {
                     <div>
                       <p className="font-medium mb-1">AI-интервьюер</p>
                       <p className="text-foreground">
-                        {aiInterviewQuestions[currentInterviewQuestion]}
+                        {aiQuestions[currentInterviewQuestion]?.text}
                       </p>
                     </div>
                   </div>
@@ -569,7 +703,7 @@ export default function SkillProofPage() {
                     disabled={!interviewAnswer.trim()}
                   >
                     <Send className="mr-2 h-4 w-4" />
-                    {currentInterviewQuestion < aiInterviewQuestions.length - 1 
+                    {currentInterviewQuestion < aiQuestions.length - 1 
                       ? 'Отправить и продолжить' 
                       : 'Завершить интервью'}
                   </Button>
@@ -641,16 +775,62 @@ export default function SkillProofPage() {
                     Вернуться на главную
                   </Button>
                 </div>
+              ) : specialization && checkTestPassed(specialization, correctAnswersCount) ? (
+                <>
+                  <CertificateCard
+                    candidateName="Иванов Иван Иванович"
+                    specialization={specConfig?.name || ''}
+                    score={finalScore}
+                    isClean={proctoring.violationCount === 0 && proctoring.suspiciousActivities.length === 0}
+                    date={new Date().toLocaleDateString('ru-RU')}
+                    certificateId={`SKILL-${Date.now().toString(36).toUpperCase()}`}
+                    onDownload={() => alert('Скачивание PDF...')}
+                  />
+                  <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20 text-center">
+                    <p className="text-success font-medium">
+                      Поздравляем! Вы успешно прошли тест: {correctAnswersCount} из {questions.length} правильных ответов
+                    </p>
+                  </div>
+                </>
               ) : (
-                <CertificateCard
-                  candidateName="Иванов Иван Иванович"
-                  specialization={specialization === 'marketing' ? 'Маркетинг в недвижимости' : 'Бухгалтерия малого бизнеса'}
-                  score={finalScore}
-                  isClean={proctoring.violationCount === 0 && proctoring.suspiciousActivities.length === 0}
-                  date={new Date().toLocaleDateString('ru-RU')}
-                  certificateId={`SKILL-${Date.now().toString(36).toUpperCase()}`}
-                  onDownload={() => alert('Скачивание PDF...')}
-                />
+                <div className="text-center py-12">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-warning/10 mx-auto mb-6">
+                    <AlertTriangle className="h-10 w-10 text-warning" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-2">Тест не пройден</h2>
+                  <p className="text-muted-foreground mb-4">
+                    Вы ответили правильно на {correctAnswersCount} из {questions.length} вопросов.
+                  </p>
+                  <p className="text-muted-foreground mb-6">
+                    Для получения сертификата необходимо ответить правильно минимум на {specConfig?.passingScore || 4} вопросов.
+                  </p>
+                  <div className="p-4 rounded-lg bg-muted mb-8">
+                    <p className="text-sm text-muted-foreground">
+                      Вы можете пройти тест повторно после изучения материала.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button variant="outline" onClick={() => router.push('/')}>
+                      На главную
+                    </Button>
+                    <Button onClick={() => {
+                      setStage('specialization')
+                      setSpecialization(null)
+                      setCurrentQuestion(0)
+                      setAnswers({})
+                      setCorrectAnswersCount(0)
+                      setFinalScore(0)
+                      setShowExplanation(false)
+                      setIsAnswerLocked(false)
+                      setTimeRemaining(30 * 60)
+                      setCurrentInterviewQuestion(0)
+                      setInterviewAnswers([])
+                      setAnalysisProgress(0)
+                    }}>
+                      Попробовать снова
+                    </Button>
+                  </div>
+                </div>
               )}
 
               {!proctoring.isTerminated && proctoring.violationCount > 0 && (

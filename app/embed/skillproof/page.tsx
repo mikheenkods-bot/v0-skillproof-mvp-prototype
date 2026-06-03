@@ -16,12 +16,19 @@ import { ProctoringWidget } from '@/components/proctoring/proctoring-widget'
 import { IdentityVerification } from '@/components/proctoring/identity-verification'
 import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoring } from '@/hooks/use-proctoring'
-import { marketingQuestions, accountingQuestions, aiInterviewQuestions } from '@/lib/demo-data'
+import { 
+  specializations, 
+  getQuestionsForSpecialization, 
+  getAIQuestionsForSpecialization,
+  checkTestPassed,
+  type SpecializationType 
+} from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
 import {
   Shield,
   Building2,
   Calculator,
+  Users,
   Clock,
   CheckCircle2,
   ChevronRight,
@@ -32,11 +39,11 @@ import {
   Brain,
   XCircle,
   ArrowLeft,
-  Home
+  Home,
+  Info
 } from 'lucide-react'
 
 type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
-type Specialization = 'marketing' | 'accounting' | null
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -49,7 +56,7 @@ const preparationChecklist = [
 function SkillProofContent() {
   const searchParams = useSearchParams()
   const [stage, setStage] = useState<Stage>('preparation')
-  const [specialization, setSpecialization] = useState<Specialization>(null)
+  const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number | string>>({})
   const [showRulesModal, setShowRulesModal] = useState(false)
@@ -61,10 +68,16 @@ function SkillProofContent() {
   const [interviewAnswers, setInterviewAnswers] = useState<string[]>([])
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [finalScore, setFinalScore] = useState(0)
+  const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
   const [shake, setShake] = useState(false)
+  const [showExplanation, setShowExplanation] = useState(false)
+  const [isAnswerLocked, setIsAnswerLocked] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const questions = specialization === 'marketing' ? marketingQuestions : accountingQuestions
+  // Get questions for selected specialization
+  const questions = specialization ? getQuestionsForSpecialization(specialization) : []
+  const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
+  const specConfig = specialization ? specializations[specialization] : null
 
   // Notify parent window of events
   const notifyParent = useCallback((action: string, data?: Record<string, unknown>) => {
@@ -107,7 +120,7 @@ function SkillProofContent() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect
+  // Analysis effect - calculate real score
   useEffect(() => {
     if (stage !== 'analyzing') return
 
@@ -115,19 +128,31 @@ function SkillProofContent() {
       setAnalysisProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval)
-          const score = Math.floor(70 + Math.random() * 25)
+          // Calculate real score
+          let correct = 0
+          questions.forEach((q) => {
+            if (q.type === 'multiple_choice' && answers[q.id] === q.correctAnswer) {
+              correct++
+            }
+          })
+          setCorrectAnswersCount(correct)
+          const score = Math.round((correct / questions.length) * 100)
           setFinalScore(score)
+          
+          // Check if passed (4 out of 5)
+          const passed = specialization ? checkTestPassed(specialization, correct) : false
+          
           setTimeout(() => {
             setStage('result')
-            if (score >= 70) {
+            if (passed) {
               confetti({
                 particleCount: 100,
                 spread: 70,
                 origin: { y: 0.6 }
               })
-              notifyParent('completed', { score, passed: true })
+              notifyParent('completed', { score, passed: true, correctAnswers: correct })
             } else {
-              notifyParent('completed', { score, passed: false })
+              notifyParent('completed', { score, passed: false, correctAnswers: correct })
             }
           }, 500)
           return 100
@@ -137,19 +162,27 @@ function SkillProofContent() {
     }, 100)
 
     return () => clearInterval(interval)
-  }, [stage, notifyParent])
+  }, [stage, notifyParent, answers, questions, specialization])
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
 
   const handleAnswerSelect = (questionId: string, answer: number | string) => {
+    if (isAnswerLocked) return // Prevent changing answer
+    
     const timeTaken = (Date.now() - questionStartTime) / 1000
     if (timeTaken < 3 && typeof answer === 'number') {
       proctoring.recordFastAnswer()
     }
     setAnswers(prev => ({ ...prev, [questionId]: answer }))
+    // Lock answer and show explanation
+    setIsAnswerLocked(true)
+    setShowExplanation(true)
   }
 
   const handleNextQuestion = () => {
+    setShowExplanation(false)
+    setIsAnswerLocked(false)
+    
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1)
       setQuestionStartTime(Date.now())
@@ -164,7 +197,7 @@ function SkillProofContent() {
     setInterviewAnswers(prev => [...prev, interviewAnswer])
     setInterviewAnswer('')
     
-    if (currentInterviewQuestion < aiInterviewQuestions.length - 1) {
+    if (currentInterviewQuestion < aiQuestions.length - 1) {
       setCurrentInterviewQuestion(prev => prev + 1)
     } else {
       proctoring.stopProctoring()
@@ -304,9 +337,51 @@ function SkillProofContent() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-4"
             >
-              <h2 className="text-xl font-semibold text-center mb-6">Выберите специализацию</h2>
+              <div className="text-center mb-6">
+                <h2 className="text-xl font-semibold">Выберите специализацию</h2>
+                <p className="text-sm text-muted-foreground mt-1">Для прохождения необходимо 4 из 5 правильных ответов</p>
+              </div>
               
               <div className="grid gap-4 md:grid-cols-2">
+                {/* Бухгалтер */}
+                <Card 
+                  className={cn(
+                    "cursor-pointer transition-all hover:border-primary/50",
+                    specialization === 'accountant' && "border-primary ring-2 ring-primary/20"
+                  )}
+                  onClick={() => setSpecialization('accountant')}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex flex-col items-center text-center">
+                      <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
+                        <Calculator className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <h3 className="font-semibold">Бухгалтер</h3>
+                      <p className="text-sm text-muted-foreground mt-1">5 вопросов + AI-интервью</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Account Manager */}
+                <Card 
+                  className={cn(
+                    "cursor-pointer transition-all hover:border-primary/50",
+                    specialization === 'account_manager' && "border-primary ring-2 ring-primary/20"
+                  )}
+                  onClick={() => setSpecialization('account_manager')}
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex flex-col items-center text-center">
+                      <div className="h-12 w-12 rounded-full bg-violet-500/10 flex items-center justify-center mb-4">
+                        <Users className="h-6 w-6 text-violet-600" />
+                      </div>
+                      <h3 className="font-semibold">Account Manager</h3>
+                      <p className="text-sm text-muted-foreground mt-1">5 вопросов + AI-интервью</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Маркетинг */}
                 <Card 
                   className={cn(
                     "cursor-pointer transition-all hover:border-primary/50",
@@ -316,15 +391,16 @@ function SkillProofContent() {
                 >
                   <CardContent className="pt-6">
                     <div className="flex flex-col items-center text-center">
-                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                        <Building2 className="h-6 w-6 text-primary" />
+                      <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center mb-4">
+                        <Building2 className="h-6 w-6 text-blue-600" />
                       </div>
-                      <h3 className="font-semibold">Маркетинг</h3>
+                      <h3 className="font-semibold">Маркетинг недвижимости</h3>
                       <p className="text-sm text-muted-foreground mt-1">5 вопросов + AI-интервью</p>
                     </div>
                   </CardContent>
                 </Card>
 
+                {/* Бухгалтерия МБ */}
                 <Card 
                   className={cn(
                     "cursor-pointer transition-all hover:border-primary/50",
@@ -334,10 +410,10 @@ function SkillProofContent() {
                 >
                   <CardContent className="pt-6">
                     <div className="flex flex-col items-center text-center">
-                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                        <Calculator className="h-6 w-6 text-primary" />
+                      <div className="h-12 w-12 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
+                        <Calculator className="h-6 w-6 text-green-600" />
                       </div>
-                      <h3 className="font-semibold">Бухгалтерия</h3>
+                      <h3 className="font-semibold">Бухгалтерия МБ</h3>
                       <p className="text-sm text-muted-foreground mt-1">5 вопросов + AI-интервью</p>
                     </div>
                   </CardContent>
@@ -371,7 +447,7 @@ function SkillProofContent() {
           )}
 
           {/* Testing Stage */}
-          {stage === 'testing' && (
+          {stage === 'testing' && questions.length > 0 && (
             <motion.div
               key="testing"
               initial={{ opacity: 0, y: 20 }}
@@ -386,28 +462,55 @@ function SkillProofContent() {
                     <CardTitle className="text-lg">
                       Вопрос {currentQuestion + 1} из {questions.length}
                     </CardTitle>
+                    <Badge variant="outline">{questions[currentQuestion].category}</Badge>
                   </div>
                   <Progress value={((currentQuestion + 1) / questions.length) * 100} className="mt-2" />
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-lg font-medium">{questions[currentQuestion].question}</p>
+                  <p className="text-lg font-medium">{questions[currentQuestion].text}</p>
 
-                  {questions[currentQuestion].type === 'multiple' ? (
+                  {questions[currentQuestion].type === 'multiple_choice' ? (
                     <div className="space-y-2">
-                      {questions[currentQuestion].options?.map((option, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleAnswerSelect(questions[currentQuestion].id, idx)}
-                          className={cn(
-                            "w-full text-left p-3 rounded-lg border transition-all",
-                            answers[questions[currentQuestion].id] === idx
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/50"
-                          )}
-                        >
-                          {option}
-                        </button>
-                      ))}
+                      {questions[currentQuestion].options?.map((option, idx) => {
+                        const isSelected = answers[questions[currentQuestion].id] === idx
+                        const isCorrect = questions[currentQuestion].correctAnswer === idx
+                        const showResult = showExplanation && isAnswerLocked
+                        
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleAnswerSelect(questions[currentQuestion].id, idx)}
+                            disabled={isAnswerLocked}
+                            className={cn(
+                              "w-full text-left p-3 rounded-lg border transition-all",
+                              !showResult && isSelected && "border-primary bg-primary/5",
+                              !showResult && !isSelected && "border-border hover:border-primary/50",
+                              showResult && isCorrect && "border-success bg-success/10",
+                              showResult && isSelected && !isCorrect && "border-destructive bg-destructive/10",
+                              isAnswerLocked && "cursor-default"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              {showResult && isCorrect && <CheckCircle2 className="h-4 w-4 text-success" />}
+                              {showResult && isSelected && !isCorrect && <XCircle className="h-4 w-4 text-destructive" />}
+                              <span>{option}</span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                      
+                      {/* Explanation */}
+                      {showExplanation && questions[currentQuestion].explanation && (
+                        <div className="mt-4 p-3 rounded-lg bg-muted/50 border border-border">
+                          <div className="flex items-start gap-2">
+                            <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-medium text-sm">Пояснение:</p>
+                              <p className="text-sm text-muted-foreground">{questions[currentQuestion].explanation}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <Textarea
@@ -436,7 +539,7 @@ function SkillProofContent() {
           )}
 
           {/* AI Interview Stage */}
-          {stage === 'ai-interview' && (
+          {stage === 'ai-interview' && aiQuestions.length > 0 && (
             <motion.div
               key="ai-interview"
               initial={{ opacity: 0, y: 20 }}
@@ -449,10 +552,10 @@ function SkillProofContent() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Brain className="h-5 w-5 text-primary" />
-                    AI-Интервью
+                    AI-Интервью {specConfig && `- ${specConfig.name}`}
                   </CardTitle>
                   <CardDescription>
-                    Вопрос {currentInterviewQuestion + 1} из {aiInterviewQuestions.length}
+                    Вопрос {currentInterviewQuestion + 1} из {aiQuestions.length}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -461,7 +564,7 @@ function SkillProofContent() {
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <MessageSquare className="h-4 w-4 text-primary" />
                       </div>
-                      <p className="text-sm">{aiInterviewQuestions[currentInterviewQuestion]}</p>
+                      <p className="text-sm">{aiQuestions[currentInterviewQuestion]?.text}</p>
                     </div>
                   </div>
 
@@ -557,14 +660,23 @@ function SkillProofContent() {
                     </div>
                   </CardContent>
                 </Card>
-              ) : finalScore >= 70 ? (
-                <CertificateCard
-                  name="Кандидат"
-                  specialization={specialization === 'marketing' ? 'Маркетинг' : 'Бухгалтерия'}
-                  score={finalScore}
-                  date={new Date().toLocaleDateString('ru-RU')}
-                  certificateId={`SV-${Date.now().toString(36).toUpperCase()}`}
-                />
+              ) : specialization && checkTestPassed(specialization, correctAnswersCount) ? (
+                <>
+                  <CertificateCard
+                    candidateName="Кандидат"
+                    specialization={specConfig?.name || ''}
+                    score={finalScore}
+                    isClean={proctoring.violationCount === 0}
+                    date={new Date().toLocaleDateString('ru-RU')}
+                    certificateId={`SV-${Date.now().toString(36).toUpperCase()}`}
+                    onDownload={() => notifyParent('downloadCertificate')}
+                  />
+                  <div className="p-4 rounded-lg bg-success/10 border border-success/20 text-center">
+                    <p className="text-success font-medium">
+                      Поздравляем! {correctAnswersCount} из {questions.length} правильных ответов
+                    </p>
+                  </div>
+                </>
               ) : (
                 <Card>
                   <CardContent className="pt-6">
@@ -574,7 +686,10 @@ function SkillProofContent() {
                       </div>
                       <h2 className="text-xl font-semibold">Тест не пройден</h2>
                       <p className="text-muted-foreground mt-2">
-                        Ваш результат: {finalScore}%. Для получения сертификата необходимо набрать минимум 70%.
+                        Ваш результат: {correctAnswersCount} из {questions.length} правильных ответов.
+                      </p>
+                      <p className="text-muted-foreground mt-1">
+                        Для получения сертификата необходимо минимум {specConfig?.passingScore || 4} правильных ответа.
                       </p>
                       <Button
                         className="mt-6"

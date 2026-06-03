@@ -46,25 +46,32 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     const video = videoRef.current
     if (!video || !stream) return
     
-    video.srcObject = stream
-    
-    // Ensure video plays
-    const playVideo = async () => {
-      try {
-        await video.play()
-      } catch (err) {
-        console.log('[v0] Video play error:', err)
-        // Try again with muted (some browsers require this)
-        video.muted = true
-        try {
-          await video.play()
-        } catch (e) {
-          console.log('[v0] Video play retry failed:', e)
-        }
-      }
+    // Set srcObject directly
+    if (video.srcObject !== stream) {
+      video.srcObject = stream
     }
     
-    playVideo()
+    // Ensure video plays when metadata is loaded
+    const handleLoadedMetadata = () => {
+      video.play().catch(() => {
+        video.muted = true
+        video.play().catch(() => {})
+      })
+    }
+    
+    video.addEventListener('loadedmetadata', handleLoadedMetadata)
+    
+    // Also try to play immediately if already loaded
+    if (video.readyState >= 2) {
+      video.play().catch(() => {
+        video.muted = true
+        video.play().catch(() => {})
+      })
+    }
+    
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata)
+    }
   }, [stream, currentStep])
 
   // Request camera access
@@ -304,7 +311,8 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover scale-x-[-1]"
+                  style={{ transform: 'scaleX(-1)' }}
+                  className="w-full h-full object-cover"
                 />
                 
                 {/* Face detection overlay */}
@@ -397,7 +405,8 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover scale-x-[-1]"
+                  style={{ transform: 'scaleX(-1)' }}
+                  className="w-full h-full object-cover"
                 />
                 
                 {/* Scanning overlay */}
@@ -421,7 +430,7 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
               
               <div className="mb-6">
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Проверка окружения</span>
+                  <span className="text-muted-foreground">Проверка окр��жения</span>
                   <span className="font-medium">{scanProgress}%</span>
                 </div>
                 <Progress value={scanProgress} />
@@ -495,7 +504,8 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover scale-x-[-1]"
+                    style={{ transform: 'scaleX(-1)' }}
+                    className="w-full h-full object-cover"
                   />
                 )}
                 

@@ -49,7 +49,7 @@ export function getEventSeverity(eventType: EventType): EventSeverity {
     keystroke: 'info',
     typing_burst: 'high',
     suspicious_input: 'high',
-    suspicious_timing: 'high',
+    suspicious_timing: 'info',  // Just informational, not a violation
     heartbeat: 'info',
     heartbeat_missed: 'medium',
     answer_submitted: 'info',

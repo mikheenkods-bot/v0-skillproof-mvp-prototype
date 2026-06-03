@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { toast } from 'sonner'
 import { 
   EventType, 
@@ -531,6 +531,15 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     return metrics.suspiciousPatterns
   }, [])
 
+  // Memoize violations array to prevent infinite re-renders
+  const violations = useMemo(() => 
+    state.events.filter(e => getEventSeverity(e.eventType) !== 'info'),
+    [state.events]
+  )
+
+  const violationCount = state.tabSwitchCount + state.fullscreenExitCount + 
+    state.copyAttemptCount + state.pasteAttemptCount
+
   return {
     state,
     systemCheck,
@@ -556,9 +565,8 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     
     // Legacy compatibility
     isActive: state.isActive,
-    violations: state.events.filter(e => getEventSeverity(e.eventType) !== 'info'),
-    violationCount: state.tabSwitchCount + state.fullscreenExitCount + 
-      state.copyAttemptCount + state.pasteAttemptCount,
+    violations,
+    violationCount,
     maxViolations,
     isTerminated: state.isTerminated,
     tabSwitchCount: state.tabSwitchCount,

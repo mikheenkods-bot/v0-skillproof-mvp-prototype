@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
@@ -18,18 +18,21 @@ import {
   MessageSquare
 } from 'lucide-react'
 
+const PLACEHOLDER_URL = 'https://your-domain.vercel.app'
+
 export default function IntegrationPage() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
+  const [baseUrl, setBaseUrl] = useState(PLACEHOLDER_URL)
+
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
 
   const copyToClipboard = (code: string, id: string) => {
     navigator.clipboard.writeText(code)
     setCopiedCode(id)
     setTimeout(() => setCopiedCode(null), 2000)
   }
-
-  const baseUrl = typeof window !== 'undefined' 
-    ? window.location.origin 
-    : 'https://your-domain.vercel.app'
 
   const codeExamples = {
     simple: `<!-- Простое встраивание через iframe -->
@@ -417,7 +420,7 @@ window.addEventListener('message', function(event) {
               <div className="flex flex-wrap gap-3">
                 <Button asChild>
                   <a href="/embed" target="_blank">
-                    Открыть embed версию
+                    Открыть embed ��ерсию
                     <ExternalLink className="ml-2 h-4 w-4" />
                   </a>
                 </Button>

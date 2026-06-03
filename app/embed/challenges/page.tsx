@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { demoCompanyChallenges } from '@/lib/demo-data'
+import { challenges } from '@/lib/demo-data'
 import {
   Target,
   Clock,
@@ -27,7 +27,7 @@ type Stage = 'list' | 'workspace' | 'submitted' | 'result'
 export default function EmbedChallengesPage() {
   const searchParams = useSearchParams()
   const [stage, setStage] = useState<Stage>('list')
-  const [selectedChallenge, setSelectedChallenge] = useState<typeof demoCompanyChallenges[0] | null>(null)
+  const [selectedChallenge, setSelectedChallenge] = useState<typeof challenges[0] | null>(null)
   const [solution, setSolution] = useState('')
   const [timeRemaining, setTimeRemaining] = useState(0)
   const [mentorMessages, setMentorMessages] = useState<Array<{ role: 'mentor' | 'user', text: string }>>([])
@@ -92,7 +92,7 @@ export default function EmbedChallengesPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleStartChallenge = (challenge: typeof demoCompanyChallenges[0]) => {
+  const handleStartChallenge = (challenge: typeof challenges[0]) => {
     setSelectedChallenge(challenge)
     setTimeRemaining(challenge.duration * 60)
     setMentorMessages([{
@@ -179,7 +179,7 @@ export default function EmbedChallengesPage() {
                 <p className="text-muted-foreground mt-1">Выберите задание для демонстрации навыков</p>
               </div>
 
-              {demoCompanyChallenges.map((challenge) => (
+              {challenges.map((challenge) => (
                 <Card key={challenge.id} className="hover:border-primary/50 transition-colors">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">

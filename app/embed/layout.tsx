@@ -1,10 +1,4 @@
-import '@/app/globals.css'
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
-import { Toaster } from 'sonner'
-import { AppProvider } from '@/components/providers/app-provider'
-
-const inter = Inter({ subsets: ['latin', 'cyrillic'] })
 
 export const metadata: Metadata = {
   title: 'SkillVerify - Embed',
@@ -26,15 +20,8 @@ export default function EmbedLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ru" className="bg-background">
-      <body className={`${inter.className} antialiased`}>
-        <AppProvider>
-          <main className="min-h-screen">
-            {children}
-          </main>
-          <Toaster position="top-center" richColors />
-        </AppProvider>
-      </body>
-    </html>
+    <main className="min-h-screen">
+      {children}
+    </main>
   )
 }

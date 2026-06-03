@@ -354,7 +354,12 @@ export default function ChallengesPage() {
                     />
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-muted-foreground">
-                        {solution.split(/\s+/).filter(w => w.length > 0).length} слов
+                        {solution.split(/\s+/).filter(w => w.length > 0).length} слов • {solution.trim().length}/100 символов минимум
+                        {solution.trim().length < 100 && (
+                          <span className="text-destructive ml-2">
+                            (нужно ещё {100 - solution.trim().length} символов)
+                          </span>
+                        )}
                       </div>
                       <div className="flex gap-3">
                         <Button variant="outline">

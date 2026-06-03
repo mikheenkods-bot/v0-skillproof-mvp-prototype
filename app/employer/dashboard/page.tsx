@@ -58,7 +58,7 @@ function getRealCandidates(): RealCandidate[] {
   const challenges = JSON.parse(localStorage.getItem('skillverify_challenges') || '[]')
   const proctoringHistory = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
   
-  // Group by unique sessions/users
+  // Group by unique sessions/users from certificates
   certificates.forEach((cert: { id: string; specialization: string; score: number; isClean: boolean; date: string; skills: Array<{ name: string; score: number }>; violations: number }, index: number) => {
     const matchingProctoring = proctoringHistory.find((p: { id: string; date: string }) => p.date === cert.date)
     const matchingChallenge = challenges.find((c: { completedAt: string }) => c.completedAt === cert.date)
@@ -82,6 +82,28 @@ function getRealCandidates(): RealCandidate[] {
         { time: '10:30', event: 'Тест завершен', type: 'info' }
       ] : []
     })
+  })
+  
+  // Also add candidates from challenges that don't match certificates
+  challenges.forEach((challenge: { id: string; title: string; specialization: string; score: number; originality: number; completedAt: string }, index: number) => {
+    const hasMatchingCert = certificates.some((c: { date: string }) => c.date === challenge.completedAt)
+    if (!hasMatchingCert) {
+      candidates.push({
+        id: challenge.id || `challenge-candidate-${index}`,
+        name: `Кандидат ${candidates.length + 1}`,
+        email: `challenge${index + 1}@test.com`,
+        avatar: String.fromCharCode(65 + ((candidates.length) % 26)),
+        specialization: challenge.specialization || challenge.title || 'ChallengeGate',
+        skillProofScore: 0, // No SkillProof score
+        proctoringStatus: 'clean' as const, // No proctoring for challenges
+        challengeStatus: 'completed' as const,
+        violations: 0,
+        originality: challenge.originality || 0,
+        completedAt: challenge.completedAt || '-',
+        skills: [],
+        proctoringLog: []
+      })
+    }
   })
   
   return candidates

@@ -341,7 +341,10 @@ export default function SkillProofPage() {
       <ConsentModal
         isOpen={showConsentModal && stage === 'consent'}
         onAccept={handleConsentAccept}
-        onClose={() => router.push('/')}
+        onClose={() => {
+          setShowConsentModal(false)
+          router.push('/')
+        }}
         systemCheck={proctoring.systemCheck}
         onRunSystemCheck={proctoring.runSystemCheck}
       />

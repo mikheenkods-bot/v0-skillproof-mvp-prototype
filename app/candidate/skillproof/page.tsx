@@ -10,9 +10,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { ConsentModal } from '@/components/proctoring/consent-modal'
 import { FullscreenPauseModal } from '@/components/proctoring/fullscreen-pause-modal'
-import { ProctoringWidget } from '@/components/proctoring/proctoring-widget'
-import { CameraPreview, SnapshotFlash } from '@/components/proctoring/camera-preview'
-import { IdentityVerification } from '@/components/proctoring/identity-verification'
 import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoringV2 } from '@/hooks/use-proctoring-v2'
 import { useProctoringMedia } from '@/hooks/use-proctoring-media'
@@ -43,14 +40,12 @@ import {
   Camera
 } from 'lucide-react'
 
-type Stage = 'consent' | 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
   { id: 'tabs', label: 'Закройте лишние вкладки браузера', description: 'Оставьте только эту вкладку' },
-  { id: 'alone', label: 'Убедитесь, что вы одни в комнате', description: 'Рядом не должно быть других людей' },
-  { id: 'camera', label: 'Подготовьте веб-камеру', description: 'Потребуется для верификации личности' },
-  { id: 'id', label: 'Подготовьте документ, удостоверяющий личность', description: 'Может потребоваться для верификации' }
+  { id: 'alone', label: 'Убедитесь, что вы одни в комнате', description: 'Для честного прохождения теста' }
 ]
 
 export default function SkillProofPage() {
@@ -356,23 +351,6 @@ export default function SkillProofPage() {
         maxExits={3}
         onReturnToFullscreen={proctoring.enterFullscreen}
       />
-
-      {/* Camera Preview (shown during test) */}
-      {(stage === 'testing' || stage === 'ai-interview') && mediaEnabled.camera && (
-        <CameraPreview
-          stream={media.cameraState.stream}
-          isEnabled={media.cameraState.isEnabled}
-          isMicEnabled={media.micState.isEnabled}
-          volumeLevel={media.micState.volumeLevel}
-          isSpeechDetected={media.micState.isSpeechDetected}
-          lastSnapshotReason={lastSnapshotReason}
-          position="bottom-right"
-          showMicIndicator={mediaEnabled.mic}
-        />
-      )}
-
-      {/* Snapshot Flash Effect */}
-      <SnapshotFlash trigger={media.cameraState.snapshotCount} />
       
       <main className="container mx-auto px-4 py-8">
         <AnimatePresence mode="wait">
@@ -449,35 +427,11 @@ export default function SkillProofPage() {
                 size="lg"
                 className="w-full"
                 disabled={!allChecked}
-                onClick={() => setStage('identity-verification')}
+                onClick={() => setStage('specialization')}
               >
-                Пройти верификацию
+                Начать тест
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
-            </motion.div>
-          )}
-
-          {/* Identity Verification Stage */}
-          {stage === 'identity-verification' && (
-            <motion.div
-              key="identity-verification"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-            >
-              <Button 
-                variant="ghost" 
-                className="mb-6"
-                onClick={() => setStage('preparation')}
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Назад
-              </Button>
-              
-              <IdentityVerification
-                onComplete={() => setStage('specialization')}
-                onCancel={() => setStage('preparation')}
-              />
             </motion.div>
           )}
 
@@ -646,18 +600,6 @@ export default function SkillProofPage() {
               exit={{ opacity: 0, y: -20 }}
               className="max-w-3xl mx-auto"
             >
-              {/* Proctoring Widget */}
-              <ProctoringWidget
-                isActive={proctoring.isActive}
-                violations={proctoring.violationCount}
-                integrityScore={proctoring.integrityScore}
-                integrityLevel={proctoring.integrityLevel}
-                maxViolations={3}
-                isFullscreen={proctoring.state.isFullscreen}
-                tabSwitchCount={proctoring.tabSwitchCount}
-                state={proctoring.state}
-              />
-
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">

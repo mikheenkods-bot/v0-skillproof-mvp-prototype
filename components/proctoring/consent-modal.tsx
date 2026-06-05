@@ -185,7 +185,8 @@ export function ConsentModal({
   }, [])
 
   const handleAccept = () => {
-    if (accepted && checkResult?.passed) {
+    if (accepted && checkResult) {
+      // Allow continuing even with warnings - just needs checkbox and system check done
       onAccept(cameraEnabled, micEnabled)
     }
   }
@@ -503,7 +504,7 @@ export function ConsentModal({
         </Button>
         <Button 
           onClick={handleAccept} 
-          disabled={!accepted || !checkResult?.passed}
+          disabled={!accepted || !checkResult}
           className="flex-1"
         >
           <Shield className="h-4 w-4 mr-2" />

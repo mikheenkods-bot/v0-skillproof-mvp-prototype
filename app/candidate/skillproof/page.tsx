@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import confetti from 'canvas-confetti'
-import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,18 +11,19 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { ConsentModal } from '@/components/proctoring/consent-modal'
 import { FullscreenPauseModal } from '@/components/proctoring/fullscreen-pause-modal'
-import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoringV2 } from '@/hooks/use-proctoring-v2'
 import { useProctoringMedia } from '@/hooks/use-proctoring-media'
 import { 
   specializations, 
-  getQuestionsForSpecialization, 
+  getRandomQuestions,
   getAIQuestionsForSpecialization,
   checkTestPassed,
-  type SpecializationType 
+  type SpecializationType,
+  type Question
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
 import { saveTestResult } from '@/app/actions/test-results'
+import { sendResultEmail } from '@/app/actions/send-result-email'
 import {
   Shield,
   Building2,
@@ -41,7 +41,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Info,
-  Camera
+  Camera,
+  ShieldCheck,
+  Mail
 } from 'lucide-react'
 
 type Stage = 'disclaimer' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
@@ -70,6 +72,9 @@ export default function SkillProofPage() {
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [finalScore, setFinalScore] = useState(0)
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
+  const [certificateId, setCertificateId] = useState('')
+  const [attemptNumber, setAttemptNumber] = useState(1)
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [shake, setShake] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
@@ -77,8 +82,9 @@ export default function SkillProofPage() {
   const [lastSnapshotReason, setLastSnapshotReason] = useState<string | undefined>()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Get questions and AI interview questions for selected specialization
-  const questions = specialization ? getQuestionsForSpecialization(specialization) : []
+  // Questions are randomized per attempt (set in handleStartTest), so each
+  // candidate and each retry gets a different set and order of questions.
+  const [questions, setQuestions] = useState<Question[]>([])
   const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
   const specConfig = specialization ? specializations[specialization] : null
 
@@ -202,6 +208,9 @@ export default function SkillProofPage() {
           existingProctoring.push(proctoringSession)
           localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
 
+          // Persist the certificate id so the result screen shows a stable value.
+          setCertificateId(certId)
+
           // Persist result to the database (every attempt, pass or fail)
           // so it can be shared with external systems via the REST API.
           void saveTestResult({
@@ -221,6 +230,20 @@ export default function SkillProofPage() {
               message: (v as { message?: string }).message ?? '',
             })),
           })
+
+          // Email the candidate a copy of their result (fire-and-forget).
+          if (candidateEmail.trim()) {
+            setEmailStatus('sending')
+            sendResultEmail({
+              certificateId: certId,
+              candidateName: candidateName.trim(),
+              candidateEmail: candidateEmail.trim(),
+              specialization: specConfig?.name || 'Бухгалтер',
+              score,
+            })
+              .then((res) => setEmailStatus(res?.ok ? 'sent' : 'error'))
+              .catch(() => setEmailStatus('error'))
+          }
 
           setTimeout(() => {
             setStage('result')
@@ -286,11 +309,36 @@ export default function SkillProofPage() {
   }
 
   const handleStartTest = () => {
+    // Generate a fresh randomized set of questions for this attempt.
+    if (specialization) {
+      setQuestions(getRandomQuestions(specialization, 5))
+    }
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
     proctoring.startQuestionTimer() // Start timing for first question
     setStage('testing')
     setQuestionStartTime(Date.now())
+  }
+
+  // One-time retake: resets the attempt state and returns to specialization
+  // selection. handleStartTest will draw a fresh randomized question set.
+  const handleRetake = () => {
+    setAttemptNumber((n) => n + 1)
+    setStage('specialization')
+    setSpecialization(null)
+    setQuestions([])
+    setCurrentQuestion(0)
+    setAnswers({})
+    setCorrectAnswersCount(0)
+    setFinalScore(0)
+    setCertificateId('')
+    setEmailStatus('idle')
+    setShowExplanation(false)
+    setIsAnswerLocked(false)
+    setTimeRemaining(30 * 60)
+    setCurrentInterviewQuestion(0)
+    setInterviewAnswers([])
+    setAnalysisProgress(0)
   }
 
   const handleAnswer = (questionId: string, answer: number | string) => {
@@ -356,7 +404,14 @@ export default function SkillProofPage() {
 
   return (
     <div className={cn("min-h-screen bg-background", shake && "shake")}>
-      <Header />
+      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
+        <div className="container mx-auto flex h-16 items-center px-4">
+          <div className="flex items-center gap-3">
+            <Shield className="h-6 w-6 text-primary" />
+            <span className="text-xl font-bold tracking-tight">SkillProof</span>
+          </div>
+        </div>
+      </header>
       
       {/* Consent Modal */}
       <ConsentModal
@@ -407,7 +462,7 @@ export default function SkillProofPage() {
                     вашему резюме получить более высокий балл при отборе.
                   </p>
                   <p>
-                    Тесты составлены с применением искусственного интеллекта и
+                    Тесты составлены с применением искусственно��о интеллекта и
                     направлены на тестирование конкретного навыка.
                   </p>
                 </div>
@@ -899,14 +954,14 @@ export default function SkillProofPage() {
                   <h2 className="text-2xl font-bold mb-2">Тест прерван</h2>
                   <p className="text-muted-foreground mb-6">
                     Превышен лимит нарушений ({proctoring.violationCount}/3).
-                    Требуется пересдача под наблюдением.
+                    Сессия завершена системой прокторинга.
                   </p>
-                  <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 mb-8">
+                  <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 mb-8 text-left">
                     <div className="flex items-center gap-2 text-destructive text-sm">
                       <AlertTriangle className="h-4 w-4" />
                       <span>Зафиксированные нарушения:</span>
                     </div>
-                    <ul className="mt-2 space-y-1 text-sm text-left">
+                    <ul className="mt-2 space-y-1 text-sm">
                       {proctoring.violations.map((v, i) => (
                         <li key={i} className="text-muted-foreground">
                           {new Date(v.timestamp).toLocaleTimeString()}: {v.description}
@@ -914,100 +969,80 @@ export default function SkillProofPage() {
                       ))}
                     </ul>
                   </div>
-                  <Button onClick={() => router.push('/')}>
-                    Вернуться на главную
-                  </Button>
                 </div>
-              ) : specialization && checkTestPassed(specialization, correctAnswersCount) ? (
-                <>
-                  <CertificateCard
-                    candidateName="Иванов Иван Иванович"
-                    specialization={specConfig?.name || ''}
-                    score={finalScore}
-                    isClean={proctoring.violationCount === 0 && proctoring.integrityScore >= 80}
-                    date={new Date().toLocaleDateString('ru-RU')}
-                    certificateId={`SKILL-${Date.now().toString(36).toUpperCase()}`}
-                    onDownload={() => alert('Скачивание PDF...')}
-                  />
-                  <div className="mt-4 p-4 rounded-lg bg-success/10 border border-success/20 text-center">
-                    <p className="text-success font-medium">
-                      Поздравляем! Вы успешно прошли тест: {correctAnswersCount} из {questions.length} правильных ответов
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Integrity Score: {proctoring.integrityScore}%
-                    </p>
-                  </div>
-                </>
               ) : (
-                <div className="text-center py-12">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-warning/10 mx-auto mb-6">
-                    <AlertTriangle className="h-10 w-10 text-warning" />
+                <div className="text-center py-6">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-6">
+                    <CheckCircle2 className="h-8 w-8 text-primary" />
                   </div>
-                  <h2 className="text-2xl font-bold mb-2">Тест не пройден</h2>
-                  <p className="text-muted-foreground mb-4">
-                    Вы ответили правильно на {correctAnswersCount} из {questions.length} вопросов.
+                  <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
+                  <p className="text-muted-foreground mb-8">
+                    Ваш результат зафиксирован и сохранён.
                   </p>
-                  <p className="text-muted-foreground mb-6">
-                    Для получения сертификата необходимо ответить правильно минимум на {specConfig?.passingScore || 4} вопросов.
-                  </p>
-                  <div className="p-4 rounded-lg bg-muted mb-8">
+
+                  {/* Score out of 100 */}
+                  <div className="rounded-2xl border bg-card p-8 mb-6">
+                    <div className="text-sm text-muted-foreground mb-2">
+                      Ваш балл по 100-балльной шкале
+                    </div>
+                    <div className="flex items-end justify-center gap-1 mb-4">
+                      <span className="text-6xl font-bold text-primary tabular-nums">
+                        {finalScore}
+                      </span>
+                      <span className="text-2xl text-muted-foreground mb-1">/100</span>
+                    </div>
+                    <Progress value={finalScore} className="h-2 mb-4" />
+                    <div className="text-sm text-muted-foreground">
+                      Правильных ответов: {correctAnswersCount} из {questions.length}
+                      {' · '}
+                      Специализация: {specConfig?.name || 'Бухгалтер'}
+                    </div>
+                  </div>
+
+                  {/* Result fixed / DB confirmation */}
+                  <div className="rounded-xl bg-muted p-4 mb-4 text-left flex items-start gap-3">
+                    <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium">Результат зафиксирован</p>
+                      <p className="text-muted-foreground">
+                        Идентификатор: {certificateId || '—'}. Результат сохранён в
+                        базе и может быть передан работодателю.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Email status */}
+                  {candidateEmail.trim() && (
+                    <div className="rounded-xl bg-muted p-4 mb-6 text-left flex items-start gap-3">
+                      <Mail className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                      <div className="text-sm">
+                        <p className="font-medium">Копия на email</p>
+                        <p className="text-muted-foreground">
+                          {emailStatus === 'sending' && `Отправляем сообщение на ${candidateEmail}...`}
+                          {emailStatus === 'sent' && `Сообщение о прохождении отправлено на ${candidateEmail}.`}
+                          {emailStatus === 'error' && `Не удалось отправить письмо на ${candidateEmail}. Результат всё равно сохранён.`}
+                          {emailStatus === 'idle' && `Сообщение будет отправлено на ${candidateEmail}.`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* One-time retake option */}
+                  {attemptNumber < 2 ? (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Если вы не довольны результатом, доступна одна пересдача.
+                        Вопросы в новой попытке будут другими.
+                      </p>
+                      <Button onClick={handleRetake} className="w-full">
+                        Пройти пересдачу (1 попытка)
+                      </Button>
+                    </>
+                  ) : (
                     <p className="text-sm text-muted-foreground">
-                      Вы можете пройти тест повторно после изучения материала.
+                      Пересдача уже использована. Это ваш итоговый результат.
                     </p>
-                  </div>
-                  <div className="flex gap-3">
-                    <Button variant="outline" onClick={() => router.push('/')}>
-                      На главную
-                    </Button>
-                    <Button onClick={() => {
-                      setStage('specialization')
-                      setSpecialization(null)
-                      setCurrentQuestion(0)
-                      setAnswers({})
-                      setCorrectAnswersCount(0)
-                      setFinalScore(0)
-                      setShowExplanation(false)
-                      setIsAnswerLocked(false)
-                      setTimeRemaining(30 * 60)
-                      setCurrentInterviewQuestion(0)
-                      setInterviewAnswers([])
-                      setAnalysisProgress(0)
-                    }}>
-                      Попробовать снова
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {!proctoring.isTerminated && proctoring.violations.length > 0 && (
-                <div className="mt-6 p-4 rounded-lg bg-warning/10 border border-warning/20">
-                  <div className="flex items-center gap-2 text-warning text-sm mb-2">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span>Зафиксированы подозрительные активности:</span>
-                  </div>
-                  <ul className="space-y-1 text-sm text-muted-foreground">
-                    {proctoring.violations.map((v, i) => (
-                      <li key={i}>{v.description}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {!proctoring.isTerminated && (
-                <div className="mt-6 flex gap-3">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => router.push('/candidate/challenges')}
-                  >
-                    Перейти к челленджам
-                  </Button>
-                  <Button 
-                    className="flex-1"
-                    onClick={() => router.push('/candidate/cabinet')}
-                  >
-                    Личный кабинет
-                  </Button>
+                  )}
                 </div>
               )}
             </motion.div>

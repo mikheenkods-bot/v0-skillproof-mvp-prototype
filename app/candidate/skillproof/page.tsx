@@ -308,10 +308,13 @@ export default function SkillProofPage() {
     setStage('preparation')
   }
 
-  const handleStartTest = () => {
+  const handleStartTest = (spec?: SpecializationType) => {
+    // Use the explicitly passed specialization to avoid relying on the
+    // async state update from setSpecialization (which would still be null here).
+    const activeSpec = spec ?? specialization
     // Generate a fresh randomized set of questions for this attempt.
-    if (specialization) {
-      setQuestions(getRandomQuestions(specialization, 5))
+    if (activeSpec) {
+      setQuestions(getRandomQuestions(activeSpec, 5))
     }
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
@@ -407,8 +410,18 @@ export default function SkillProofPage() {
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
         <div className="container mx-auto flex h-16 items-center px-4">
           <div className="flex items-center gap-3">
-            <Shield className="h-6 w-6 text-primary" />
-            <span className="text-xl font-bold tracking-tight">SkillProof</span>
+            {/* Rabota.ru brand */}
+            <span
+              className="text-2xl font-bold tracking-tight"
+              style={{ color: '#4A7DFF' }}
+            >
+              работа.ру
+            </span>
+            <div className="h-5 w-px bg-border" />
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              <span className="text-lg font-semibold tracking-tight">SkillProof</span>
+            </div>
           </div>
         </div>
       </header>
@@ -641,7 +654,7 @@ export default function SkillProofPage() {
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setSpecialization('accountant')
-                    handleStartTest()
+                    handleStartTest('accountant')
                   }}
                   className={cn(
                     "p-6 rounded-2xl border-2 text-left transition-all",
@@ -673,7 +686,7 @@ export default function SkillProofPage() {
           )}
 
           {/* Testing Stage */}
-          {stage === 'testing' && !proctoring.isTerminated && (
+          {stage === 'testing' && !proctoring.isTerminated && questions.length > 0 && questions[currentQuestion] && (
             <motion.div
               key="testing"
               initial={{ opacity: 0, y: 20 }}

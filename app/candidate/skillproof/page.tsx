@@ -18,6 +18,7 @@ import {
   getRandomQuestions,
   getAIQuestionsForSpecialization,
   checkTestPassed,
+  isAnswerCorrect,
   type SpecializationType,
   type Question
 } from '@/lib/demo-data'
@@ -61,7 +62,7 @@ export default function SkillProofPage() {
   const [candidateEmail, setCandidateEmail] = useState('')
   const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, number | string>>({})
+  const [answers, setAnswers] = useState<Record<string, number | string | number[]>>({})
   const [showConsentModal, setShowConsentModal] = useState(false)
   const [preparationChecks, setPreparationChecks] = useState<Record<string, boolean>>({})
   const [timeRemaining, setTimeRemaining] = useState(30 * 60)
@@ -357,8 +358,22 @@ export default function SkillProofPage() {
       setIsAnswerLocked(true)
       setShowExplanation(true)
     } else {
+      // multiple_select / numeric / open: записываем ответ без блокировки,
+      // кандидат подтверждает кнопкой «Следующий вопрос»
       setAnswers(prev => ({ ...prev, [questionId]: answer }))
     }
+  }
+
+  // Переключение варианта для вопросов с множественным выбором
+  const handleMultiSelectToggle = (questionId: string, index: number) => {
+    if (isAnswerLocked) return
+    setAnswers(prev => {
+      const current = Array.isArray(prev[questionId]) ? (prev[questionId] as number[]) : []
+      const next = current.includes(index)
+        ? current.filter(i => i !== index)
+        : [...current, index]
+      return { ...prev, [questionId]: next }
+    })
   }
 
   const handleNextQuestion = () => {
@@ -805,9 +820,53 @@ export default function SkillProofPage() {
                       </motion.div>
                     )}
                   </div>
+                ) : questions[currentQuestion].type === 'multiple_select' ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Выберите все верные варианты
+                    </p>
+                    {questions[currentQuestion].options?.map((option, index) => {
+                      const selected = Array.isArray(answers[questions[currentQuestion].id])
+                        ? (answers[questions[currentQuestion].id] as number[])
+                        : []
+                      const isSelected = selected.includes(index)
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleMultiSelectToggle(questions[currentQuestion].id, index)}
+                          className={cn(
+                            "w-full p-4 rounded-xl border-2 text-left transition-all flex items-center gap-3",
+                            isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                          )}
+                        >
+                          <div className={cn(
+                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2",
+                            isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground"
+                          )}>
+                            {isSelected && <CheckCircle2 className="h-4 w-4" />}
+                          </div>
+                          <span>{option}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : questions[currentQuestion].type === 'numeric' ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Введите числовой ответ (только цифры, без пробелов)
+                    </p>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Например: 22000"
+                      className="max-w-xs text-lg"
+                      value={(answers[questions[currentQuestion].id] as string) ?? ''}
+                      onChange={(e) => handleAnswer(questions[currentQuestion].id, e.target.value)}
+                    />
+                  </div>
                 ) : (
                   <Textarea
-                    placeholder="Введите ваш ответ..."
+                    placeholder="Введите развёрнутый ответ..."
                     className="min-h-[150px] resize-none"
                     value={answers[questions[currentQuestion].id] as string || ''}
                     onChange={(e) => handleAnswer(questions[currentQuestion].id, e.target.value)}
@@ -818,7 +877,7 @@ export default function SkillProofPage() {
                   <Button
                     size="lg"
                     onClick={handleNextQuestion}
-                    disabled={answers[questions[currentQuestion].id] === undefined}
+                    disabled={!hasAnsweredCurrent}
                   >
                     {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
                     <ChevronRight className="ml-2 h-4 w-4" />

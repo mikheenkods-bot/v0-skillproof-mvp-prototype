@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import confetti from 'canvas-confetti'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { ConsentModal } from '@/components/proctoring/consent-modal'
@@ -53,6 +55,8 @@ const preparationChecklist = [
 export default function SkillProofPage() {
   const router = useRouter()
   const [stage, setStage] = useState<Stage>('disclaimer')
+  const [candidateName, setCandidateName] = useState('')
+  const [candidateEmail, setCandidateEmail] = useState('')
   const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number | string>>({})
@@ -202,6 +206,8 @@ export default function SkillProofPage() {
           // so it can be shared with external systems via the REST API.
           void saveTestResult({
             certificateId: certId,
+            candidateName: candidateName.trim() || null,
+            candidateEmail: candidateEmail.trim() || null,
             specialization: specConfig?.name || 'Бухгалтер',
             score,
             correctAnswers: correct,
@@ -430,9 +436,41 @@ export default function SkillProofPage() {
                 </div>
               </div>
 
+              <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
+                <h2 className="text-lg font-semibold mb-1">Ваши данные</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Результат теста будет привязан к этим данным и передан
+                  работодателю.
+                </p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-name">Имя и фамилия</Label>
+                    <Input
+                      id="candidate-name"
+                      value={candidateName}
+                      onChange={(e) => setCandidateName(e.target.value)}
+                      placeholder="Иван Иванов"
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-email">Email</Label>
+                    <Input
+                      id="candidate-email"
+                      type="email"
+                      value={candidateEmail}
+                      onChange={(e) => setCandidateEmail(e.target.value)}
+                      placeholder="ivan@example.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <Button
                 size="lg"
                 className="w-full"
+                disabled={!candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
                 onClick={() => {
                   setStage('consent')
                   setShowConsentModal(true)

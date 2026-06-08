@@ -3,20 +3,17 @@ import { db } from '@/lib/db'
 import { testResults } from '@/lib/db/schema'
 import { KeyGate } from './key-gate'
 import { ResultsTable } from './results-table'
+import { isAdminAuthenticated } from './auth'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminResultsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ key?: string }>
-}) {
-  const { key } = await searchParams
+export default async function AdminResultsPage() {
   const requiredKey = process.env.RESULTS_API_KEY
 
   // Fail closed: if no key is configured, nobody gets in.
-  if (!requiredKey || key !== requiredKey) {
-    return <KeyGate invalid={Boolean(key) && key !== requiredKey} />
+  // Otherwise require a valid admin session cookie.
+  if (!requiredKey || !(await isAdminAuthenticated())) {
+    return <KeyGate notConfigured={!requiredKey} />
   }
 
   const results = await db

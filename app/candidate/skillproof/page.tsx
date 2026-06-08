@@ -147,10 +147,10 @@ export default function SkillProofPage() {
       setAnalysisProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval)
-          // Calculate real score based on correct answers
+          // Calculate real score based on correct answers (все типы вопросов)
           let correct = 0
           questions.forEach((q) => {
-            if (q.type === 'multiple_choice' && answers[q.id] === q.correctAnswer) {
+            if (isAnswerCorrect(q, answers[q.id])) {
               correct++
             }
           })
@@ -171,7 +171,7 @@ export default function SkillProofPage() {
           const skillCategories = [...new Set(questions.map(q => q.category))]
           const skills = skillCategories.map(cat => {
             const catQuestions = questions.filter(q => q.category === cat)
-            const catCorrect = catQuestions.filter(q => answers[q.id] === q.correctAnswer).length
+            const catCorrect = catQuestions.filter(q => isAnswerCorrect(q, answers[q.id])).length
             return {
               name: cat,
               score: Math.round((catCorrect / catQuestions.length) * 100)
@@ -877,7 +877,13 @@ export default function SkillProofPage() {
                   <Button
                     size="lg"
                     onClick={handleNextQuestion}
-                    disabled={!hasAnsweredCurrent}
+                    disabled={(() => {
+                      const a = answers[questions[currentQuestion].id]
+                      if (a === undefined || a === null) return true
+                      if (Array.isArray(a)) return a.length === 0
+                      if (typeof a === 'string') return a.trim() === ''
+                      return false
+                    })()}
                   >
                     {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
                     <ChevronRight className="ml-2 h-4 w-4" />

@@ -11,8 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { CheckCircle2, XCircle, ShieldAlert, FileDown, Search } from 'lucide-react'
+import { CheckCircle2, XCircle, ShieldAlert, FileDown, Search, LogOut } from 'lucide-react'
 import type { TestResult } from '@/lib/db/schema'
+import { logoutAdmin } from './auth'
 
 export function ResultsTable({
   results,
@@ -22,6 +23,53 @@ export function ResultsTable({
   accessKey: string
 }) {
   const [query, setQuery] = useState('')
+
+  // Экспорт отфильтрованных результатов в CSV (открывается в Excel/Google Sheets).
+  const exportCsv = () => {
+    const headers = [
+      'Имя',
+      'Email',
+      'ID сертификата',
+      'Специализация',
+      'Балл (%)',
+      'Правильных',
+      'Всего вопросов',
+      'Результат',
+      'Прокторинг',
+      'Нарушения',
+      'Дата',
+    ]
+    const escape = (v: unknown) => {
+      const s = String(v ?? '')
+      return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const rows = filtered.map((r) =>
+      [
+        r.candidateName || '',
+        r.candidateEmail || '',
+        r.certificateId,
+        r.specialization,
+        r.score,
+        r.correctAnswers,
+        r.totalQuestions,
+        r.passed ? 'Пройден' : 'Не пройден',
+        r.isClean ? 'Чисто' : 'С нарушениями',
+        r.isClean ? 0 : r.violations,
+        new Date(r.createdAt).toLocaleString('ru-RU'),
+      ]
+        .map(escape)
+        .join(';')
+    )
+    // BOM для корректной кириллицы в Excel
+    const csv = '\uFEFF' + [headers.join(';'), ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `skillproof-results-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -46,15 +94,33 @@ export function ResultsTable({
             Всего записей: {results.length}
           </p>
         </div>
-        <a
-          href={`/api/results?api_key=${encodeURIComponent(accessKey)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-        >
-          <FileDown className="h-4 w-4" />
-          Экспорт JSON (API)
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={exportCsv}
+            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <FileDown className="h-4 w-4" />
+            Экспорт CSV
+          </button>
+          <a
+            href={`/api/results?api_key=${encodeURIComponent(accessKey)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <FileDown className="h-4 w-4" />
+            JSON (API)
+          </a>
+          <form action={logoutAdmin}>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Выйти
+            </button>
+          </form>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">

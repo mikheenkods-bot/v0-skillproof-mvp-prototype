@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import confetti from 'canvas-confetti'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { ConsentModal } from '@/components/proctoring/consent-modal'
@@ -21,6 +23,7 @@ import {
   type SpecializationType 
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
+import { saveTestResult } from '@/app/actions/test-results'
 import {
   Shield,
   Building2,
@@ -36,11 +39,12 @@ import {
   Brain,
   XCircle,
   ArrowLeft,
+  ArrowRight,
   Info,
   Camera
 } from 'lucide-react'
 
-type Stage = 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'disclaimer' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -50,11 +54,13 @@ const preparationChecklist = [
 
 export default function SkillProofPage() {
   const router = useRouter()
-  const [stage, setStage] = useState<Stage>('consent')
+  const [stage, setStage] = useState<Stage>('disclaimer')
+  const [candidateName, setCandidateName] = useState('')
+  const [candidateEmail, setCandidateEmail] = useState('')
   const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number | string>>({})
-  const [showConsentModal, setShowConsentModal] = useState(true)
+  const [showConsentModal, setShowConsentModal] = useState(false)
   const [preparationChecks, setPreparationChecks] = useState<Record<string, boolean>>({})
   const [timeRemaining, setTimeRemaining] = useState(30 * 60)
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now())
@@ -195,7 +201,27 @@ export default function SkillProofPage() {
           const existingProctoring = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
           existingProctoring.push(proctoringSession)
           localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
-          
+
+          // Persist result to the database (every attempt, pass or fail)
+          // so it can be shared with external systems via the REST API.
+          void saveTestResult({
+            certificateId: certId,
+            candidateName: candidateName.trim() || null,
+            candidateEmail: candidateEmail.trim() || null,
+            specialization: specConfig?.name || 'Бухгалтер',
+            score,
+            correctAnswers: correct,
+            totalQuestions: questions.length,
+            passed,
+            isClean,
+            violations: proctoring.violations.length,
+            skills,
+            proctoringLog: proctoring.violations.map((v) => ({
+              type: (v as { type?: string }).type ?? 'violation',
+              message: (v as { message?: string }).message ?? '',
+            })),
+          })
+
           setTimeout(() => {
             setStage('result')
             if (isClean && passed) {
@@ -354,7 +380,109 @@ export default function SkillProofPage() {
       
       <main className="container mx-auto px-4 py-8">
         <AnimatePresence mode="wait">
-          {/* Preparation Stage */}
+          {/* Disclaimer Stage */}
+          {stage === 'disclaimer' && (
+            <motion.div
+              key="disclaimer"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-2xl mx-auto"
+            >
+              <div className="text-center mb-8">
+                <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mb-4">
+                  <Shield className="h-8 w-8 text-primary" />
+                </div>
+                <h1 className="text-3xl font-bold mb-2">SkillProof</h1>
+                <p className="text-muted-foreground">
+                  Подтверждение навыков для вашего резюме
+                </p>
+              </div>
+
+              <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
+                <h2 className="text-lg font-semibold mb-4">Перед началом</h2>
+                <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
+                  <p>
+                    В данном разделе будут представлены тесты, которые помогут
+                    вашему резюме получить более высокий балл при отборе.
+                  </p>
+                  <p>
+                    Тесты составлены с применением искусственного интеллекта и
+                    направлены на тестирование конкретного навыка.
+                  </p>
+                </div>
+
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-sm">
+                      Тестирование проходит под наблюдением системы прокторинга
+                      для честной оценки результата.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-sm">
+                      Результат сохраняется и может быть передан работодателю при
+                      отборе кандидатов.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-sm">
+                      При неуспешном прохождении тест можно пройти повторно.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
+                <h2 className="text-lg font-semibold mb-1">Ваши данные</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Результат теста будет привязан к этим данным и передан
+                  работодателю.
+                </p>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-name">Имя и фамилия</Label>
+                    <Input
+                      id="candidate-name"
+                      value={candidateName}
+                      onChange={(e) => setCandidateName(e.target.value)}
+                      placeholder="Иван Иванов"
+                      autoComplete="name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="candidate-email">Email</Label>
+                    <Input
+                      id="candidate-email"
+                      type="email"
+                      value={candidateEmail}
+                      onChange={(e) => setCandidateEmail(e.target.value)}
+                      placeholder="ivan@example.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                size="lg"
+                className="w-full"
+                disabled={!candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
+                onClick={() => {
+                  setStage('consent')
+                  setShowConsentModal(true)
+                }}
+              >
+                Начать тестирование
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </motion.div>
+          )}
+
+
           {stage === 'preparation' && (
             <motion.div
               key="preparation"
@@ -442,16 +570,16 @@ export default function SkillProofPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="max-w-4xl mx-auto"
+              className="max-w-xl mx-auto"
             >
               <div className="text-center mb-8">
-                <h1 className="text-3xl font-bold mb-2">Выберите специализацию</h1>
+                <h1 className="text-3xl font-bold mb-2">Тестирование навыка</h1>
                 <p className="text-muted-foreground">
-                  Пройдите тестирование по вашему направлению. Для прохождения необходимо ответить правильно на 4 из 5 вопросов.
+                  Для прохождения необходимо ответить правильно на 4 из 5 вопросов.
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid gap-6">
                 {/* Бухгалтер */}
                 <motion.button
                   whileHover={{ scale: 1.02 }}
@@ -473,108 +601,6 @@ export default function SkillProofPage() {
                   <h3 className="text-xl font-bold mb-2">Бухгалтер</h3>
                   <p className="text-muted-foreground text-sm mb-4">
                     Проводки, НДС, ФСБУ, отчётность, балансовое уравнение
-                  </p>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      30 минут
-                    </span>
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4" />
-                      5 вопросов
-                    </span>
-                  </div>
-                </motion.button>
-
-                {/* Account Manager */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    setSpecialization('account_manager')
-                    handleStartTest()
-                  }}
-                  className={cn(
-                    "p-6 rounded-2xl border-2 text-left transition-all",
-                    specialization === 'account_manager'
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-violet-500/10 mb-4">
-                    <Users className="h-7 w-7 text-violet-600" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">Account Manager</h3>
-                  <p className="text-muted-foreground text-sm mb-4">
-                    LTV/CAC, unit-экономика, retention, ап-сейл, работа с возражениями
-                  </p>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      30 минут
-                    </span>
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4" />
-                      5 вопросов
-                    </span>
-                  </div>
-                </motion.button>
-
-                {/* Маркетинг недвижимости */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    setSpecialization('marketing')
-                    handleStartTest()
-                  }}
-                  className={cn(
-                    "p-6 rounded-2xl border-2 text-left transition-all",
-                    specialization === 'marketing'
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10 mb-4">
-                    <Building2 className="h-7 w-7 text-blue-600" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">Маркетинг в недвижимости</h3>
-                  <p className="text-muted-foreground text-sm mb-4">
-                    ROI-анализ, лидогенерация, CRM, таргетинг
-                  </p>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      30 минут
-                    </span>
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4" />
-                      5 вопросов
-                    </span>
-                  </div>
-                </motion.button>
-
-                {/* Бухгалтерия малого бизнеса */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    setSpecialization('accounting')
-                    handleStartTest()
-                  }}
-                  className={cn(
-                    "p-6 rounded-2xl border-2 text-left transition-all",
-                    specialization === 'accounting'
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-green-500/10 mb-4">
-                    <Calculator className="h-7 w-7 text-green-600" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">Бухгалтерия малого бизнеса</h3>
-                  <p className="text-muted-foreground text-sm mb-4">
-                    Налоги, отчетность, 1С, оптимизация
                   </p>
                   <div className="flex items-center gap-4 text-sm">
                     <span className="flex items-center gap-1 text-muted-foreground">

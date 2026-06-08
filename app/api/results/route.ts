@@ -1,0 +1,45 @@
+import { db } from '@/lib/db'
+import { testResults } from '@/lib/db/schema'
+import { desc, eq } from 'drizzle-orm'
+import { NextResponse } from 'next/server'
+
+// GET /api/results
+// Returns all test results as JSON. Intended for consumption by external systems.
+// Optional protection: set RESULTS_API_KEY env var and pass it via the
+// "x-api-key" header or "?api_key=" query param.
+export async function GET(request: Request) {
+  const requiredKey = process.env.RESULTS_API_KEY
+
+  if (requiredKey) {
+    const { searchParams } = new URL(request.url)
+    const providedKey =
+      request.headers.get('x-api-key') || searchParams.get('api_key')
+
+    if (providedKey !== requiredKey) {
+      return NextResponse.json(
+        { error: 'Unauthorized. Provide a valid API key.' },
+        { status: 401 }
+      )
+    }
+  }
+
+  try {
+    const { searchParams } = new URL(request.url)
+    const certificateId = searchParams.get('certificate_id')
+
+    const results = certificateId
+      ? await db
+          .select()
+          .from(testResults)
+          .where(eq(testResults.certificateId, certificateId))
+      : await db.select().from(testResults).orderBy(desc(testResults.createdAt))
+
+    return NextResponse.json({ count: results.length, results })
+  } catch (error) {
+    console.error('[v0] Failed to fetch test results:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch test results' },
+      { status: 500 }
+    )
+  }
+}

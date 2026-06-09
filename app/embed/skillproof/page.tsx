@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'next/navigation'
 import confetti from 'canvas-confetti'
@@ -18,12 +18,14 @@ import { CertificateCard } from '@/components/certificate/certificate-card'
 import { useProctoring } from '@/hooks/use-proctoring'
 import { 
   specializations, 
-  getQuestionsForSpecialization, 
+  getRandomQuestions,
+  isAnswerCorrect,
   getAIQuestionsForSpecialization,
   checkTestPassed,
   type SpecializationType 
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
+import { gradeOpenAnswers, type OpenAnswerInput } from '@/app/actions/grade-open-answers'
 import {
   Shield,
   Building2,
@@ -75,7 +77,10 @@ function SkillProofContent() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Get questions for selected specialization
-  const questions = specialization ? getQuestionsForSpecialization(specialization) : []
+  const questions = useMemo(
+    () => (specialization ? getRandomQuestions(specialization, 10) : []),
+    [specialization]
+  )
   const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
   const specConfig = specialization ? specializations[specialization] : null
 
@@ -120,49 +125,82 @@ function SkillProofContent() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect - calculate real score
+  // Analysis effect - calculate real score (objective + AI-graded open/interview answers)
   useEffect(() => {
     if (stage !== 'analyzing') return
 
+    let cancelled = false
+
+    const finalize = async () => {
+      const openTestQuestions = questions.filter((q) => q.type === 'open')
+      const objectiveQuestions = questions.filter((q) => q.type !== 'open')
+
+      const openTestInputs: OpenAnswerInput[] = openTestQuestions.map((q) => ({
+        question: q.text,
+        answer: String(answers[q.id] ?? ''),
+        reference: q.sampleAnswer,
+      }))
+      const interviewInputs: OpenAnswerInput[] = aiQuestions.map((q, i) => ({
+        question: q.text,
+        answer: interviewAnswers[i] ?? '',
+      }))
+
+      const allOpenInputs = [...openTestInputs, ...interviewInputs]
+      let openGrades: number[] = []
+      if (allOpenInputs.length > 0) {
+        const fallback = new Promise<{ answers: { score: number }[] }>((resolve) =>
+          setTimeout(
+            () => resolve({ answers: allOpenInputs.map((i) => ({ score: i.answer.trim() ? 50 : 0 })) }),
+            15000
+          )
+        )
+        const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
+        openGrades = result.answers.map((a) => a.score)
+      }
+      if (cancelled) return
+
+      const openTestGrades = openGrades.slice(0, openTestInputs.length)
+      const interviewGrades = openGrades.slice(openTestInputs.length)
+
+      const objectiveItemScores = objectiveQuestions.map((q) =>
+        isAnswerCorrect(q, answers[q.id]) ? 100 : 0
+      )
+      const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
+      const openCorrect = openTestGrades.filter((s) => s >= 60).length
+      const correct = objectiveCorrect + openCorrect
+      setCorrectAnswersCount(correct)
+
+      const allItemScores = [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
+      const score = allItemScores.length
+        ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
+        : 0
+      setFinalScore(score)
+
+      const passed = specialization ? checkTestPassed(specialization, correct) : false
+
+      setStage('result')
+      if (passed) {
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } })
+      }
+      notifyParent('completed', { score, passed, correctAnswers: correct })
+    }
+
     const interval = setInterval(() => {
-      setAnalysisProgress(prev => {
+      setAnalysisProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
-          // Calculate real score
-          let correct = 0
-          questions.forEach((q) => {
-            if (q.type === 'multiple_choice' && answers[q.id] === q.correctAnswer) {
-              correct++
-            }
-          })
-          setCorrectAnswersCount(correct)
-          const score = Math.round((correct / questions.length) * 100)
-          setFinalScore(score)
-          
-          // Check if passed (4 out of 5)
-          const passed = specialization ? checkTestPassed(specialization, correct) : false
-          
-          setTimeout(() => {
-            setStage('result')
-            if (passed) {
-              confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-              })
-              notifyParent('completed', { score, passed: true, correctAnswers: correct })
-            } else {
-              notifyParent('completed', { score, passed: false, correctAnswers: correct })
-            }
-          }, 500)
+          void finalize()
           return 100
         }
         return prev + 2
       })
     }, 100)
 
-    return () => clearInterval(interval)
-  }, [stage, notifyParent, answers, questions, specialization])
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [stage, notifyParent, answers, questions, aiQuestions, interviewAnswers, specialization])
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
 

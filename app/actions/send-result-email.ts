@@ -28,7 +28,7 @@ export async function sendResultEmail(input: ResultEmailInput) {
   const resend = new Resend(apiKey)
 
   try {
-    await resend.emails.send({
+    const { error } = await resend.emails.send({
       from,
       to: input.candidateEmail,
       subject: `SkillProof: результат тестирования — ${input.score}/100`,
@@ -50,9 +50,15 @@ export async function sendResultEmail(input: ResultEmailInput) {
         </div>
       `,
     })
+
+    if (error) {
+      // Surface the real reason (invalid key, unverified domain, etc.) in logs.
+      console.log('[v0] Resend returned an error:', JSON.stringify(error))
+      return { ok: false as const, reason: 'send_failed' as const, detail: error.message }
+    }
     return { ok: true as const }
   } catch (error) {
     console.log('[v0] Failed to send result email:', error)
-    return { ok: false, reason: 'send_failed' as const }
+    return { ok: false as const, reason: 'send_failed' as const }
   }
 }

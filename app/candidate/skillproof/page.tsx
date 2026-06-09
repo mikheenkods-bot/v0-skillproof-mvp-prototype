@@ -23,7 +23,7 @@ import {
   type Question
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
-import { saveTestResult } from '@/app/actions/test-results'
+import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
 import { sendResultEmail } from '@/app/actions/send-result-email'
 import {
   Shield,
@@ -47,7 +47,7 @@ import {
   Mail
 } from 'lucide-react'
 
-type Stage = 'disclaimer' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -81,6 +81,9 @@ export default function SkillProofPage() {
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
   const [mediaEnabled, setMediaEnabled] = useState({ camera: false, mic: false })
   const [lastSnapshotReason, setLastSnapshotReason] = useState<string | undefined>()
+  // Server-side repeat-attempt gate (by email — VPN-proof, unlike an IP check).
+  const [checkingCompletion, setCheckingCompletion] = useState(false)
+  const [existingCompletion, setExistingCompletion] = useState<ExistingCompletion | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Questions are randomized per attempt (set in handleStartTest), so each
@@ -139,131 +142,140 @@ export default function SkillProofPage() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect - calculate real score and save to localStorage
+  // Analysis effect - calculate real score and persist results.
+  // Runs exactly once per "analyzing" stage. The heavy work (scoring, DB save,
+  // email) lives in a dedicated function — NOT inside a setState updater — and
+  // the progress bar is purely visual. A ref guard prevents the duplicate runs
+  // that previously made this stage hang and re-save on every render.
+  const analysisDoneRef = useRef(false)
   useEffect(() => {
-    if (stage !== 'analyzing') return
+    if (stage !== 'analyzing') {
+      analysisDoneRef.current = false
+      return
+    }
+    if (analysisDoneRef.current) return
+    analysisDoneRef.current = true
 
+    // Snapshot violations once so later proctoring events can't restart this.
+    const violationsList = proctoring.violations
+    const violationCount = violationsList.length
+
+    // Visual-only progress animation.
+    setAnalysisProgress(0)
     const interval = setInterval(() => {
-      setAnalysisProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          // Calculate real score based on correct answers (все типы вопросов)
-          let correct = 0
-          questions.forEach((q) => {
-            if (isAnswerCorrect(q, answers[q.id])) {
-              correct++
-            }
-          })
-          setCorrectAnswersCount(correct)
-          const score = Math.round((correct / questions.length) * 100)
-          setFinalScore(score)
-          
-          // Check if passed (4 out of 5 correct)
-          const passed = specialization ? checkTestPassed(specialization, correct) : false
-          const isClean = proctoring.violations.length === 0
-          
-          // Save results to localStorage for profile
-          const now = new Date()
-          const dateStr = now.toLocaleDateString('ru-RU')
-          const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-          
-          // Generate skills based on questions
-          const skillCategories = [...new Set(questions.map(q => q.category))]
-          const skills = skillCategories.map(cat => {
-            const catQuestions = questions.filter(q => q.category === cat)
-            const catCorrect = catQuestions.filter(q => isAnswerCorrect(q, answers[q.id])).length
-            return {
-              name: cat,
-              score: Math.round((catCorrect / catQuestions.length) * 100)
-            }
-          })
-          
-          // Save certificate if passed
-          if (passed) {
-            const certificate = {
-              id: certId,
-              specialization: specConfig?.name || 'Общий тест',
-              score,
-              isClean,
-              date: dateStr,
-              skills,
-              violations: proctoring.violations.length
-            }
-            
-            const existingCerts = JSON.parse(localStorage.getItem('skillverify_certificates') || '[]')
-            existingCerts.push(certificate)
-            localStorage.setItem('skillverify_certificates', JSON.stringify(existingCerts))
-          }
-          
-          // Save proctoring history
-          const proctoringSession = {
-            id: `proc-${Date.now()}`,
-            date: dateStr,
-            type: 'SkillProof',
-            specialization: specConfig?.name || 'Общий тест',
-            status: isClean ? 'clean' : 'violations',
-            violations: proctoring.violations.length
-          }
-          
-          const existingProctoring = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
-          existingProctoring.push(proctoringSession)
-          localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
+      setAnalysisProgress(prev => (prev >= 100 ? 100 : prev + 4))
+    }, 80)
 
-          // Persist the certificate id so the result screen shows a stable value.
-          setCertificateId(certId)
+    const finalize = () => {
+      clearInterval(interval)
+      setAnalysisProgress(100)
 
-          // Persist result to the database (every attempt, pass or fail)
-          // so it can be shared with external systems via the REST API.
-          void saveTestResult({
-            certificateId: certId,
-            candidateName: candidateName.trim() || null,
-            candidateEmail: candidateEmail.trim() || null,
-            specialization: specConfig?.name || 'Бухгалтер',
-            score,
-            correctAnswers: correct,
-            totalQuestions: questions.length,
-            passed,
-            isClean,
-            violations: proctoring.violations.length,
-            skills,
-            proctoringLog: proctoring.violations.map((v) => ({
-              type: (v as { type?: string }).type ?? 'violation',
-              message: (v as { message?: string }).message ?? '',
-            })),
-          })
-
-          // Email the candidate a copy of their result (fire-and-forget).
-          if (candidateEmail.trim()) {
-            setEmailStatus('sending')
-            sendResultEmail({
-              certificateId: certId,
-              candidateName: candidateName.trim(),
-              candidateEmail: candidateEmail.trim(),
-              specialization: specConfig?.name || 'Бухгалтер',
-              score,
-            })
-              .then((res) => setEmailStatus(res?.ok ? 'sent' : 'error'))
-              .catch(() => setEmailStatus('error'))
-          }
-
-          setTimeout(() => {
-            setStage('result')
-            if (isClean && passed) {
-              confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-              })
-            }
-          }, 500)
-          return 100
-        }
-        return prev + 2
+      // Calculate real score based on correct answers (все типы вопросов)
+      let correct = 0
+      questions.forEach((q) => {
+        if (isAnswerCorrect(q, answers[q.id])) correct++
       })
-    }, 100)
+      setCorrectAnswersCount(correct)
+      const score = questions.length ? Math.round((correct / questions.length) * 100) : 0
+      setFinalScore(score)
 
-    return () => clearInterval(interval)
-  }, [stage, answers, questions, proctoring.violations.length, specialization, specConfig?.name, proctoring.violations])
+      const passed = specialization ? checkTestPassed(specialization, correct) : false
+      const isClean = violationCount === 0
+
+      const now = new Date()
+      const dateStr = now.toLocaleDateString('ru-RU')
+      const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+
+      // Generate skills based on question categories
+      const skillCategories = [...new Set(questions.map(q => q.category))]
+      const skills = skillCategories.map(cat => {
+        const catQuestions = questions.filter(q => q.category === cat)
+        const catCorrect = catQuestions.filter(q => isAnswerCorrect(q, answers[q.id])).length
+        return {
+          name: cat,
+          score: Math.round((catCorrect / catQuestions.length) * 100),
+        }
+      })
+
+      // Save certificate to localStorage if passed
+      if (passed) {
+        const certificate = {
+          id: certId,
+          specialization: specConfig?.name || 'Общий тест',
+          score,
+          isClean,
+          date: dateStr,
+          skills,
+          violations: violationCount,
+        }
+        const existingCerts = JSON.parse(localStorage.getItem('skillverify_certificates') || '[]')
+        existingCerts.push(certificate)
+        localStorage.setItem('skillverify_certificates', JSON.stringify(existingCerts))
+      }
+
+      // Save proctoring history
+      const proctoringSession = {
+        id: `proc-${Date.now()}`,
+        date: dateStr,
+        type: 'SkillProof',
+        specialization: specConfig?.name || 'Общий тест',
+        status: isClean ? 'clean' : 'violations',
+        violations: violationCount,
+      }
+      const existingProctoring = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
+      existingProctoring.push(proctoringSession)
+      localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
+
+      setCertificateId(certId)
+
+      // Persist result to the database (every attempt, pass or fail).
+      void saveTestResult({
+        certificateId: certId,
+        candidateName: candidateName.trim() || null,
+        candidateEmail: candidateEmail.trim() || null,
+        specialization: specConfig?.name || 'Бухгалтер',
+        score,
+        correctAnswers: correct,
+        totalQuestions: questions.length,
+        passed,
+        isClean,
+        violations: violationCount,
+        skills,
+        proctoringLog: violationsList.map((v) => ({
+          type: (v as { type?: string }).type ?? 'violation',
+          message: (v as { message?: string }).message ?? '',
+        })),
+      })
+
+      // Email the candidate a copy of their result (fire-and-forget).
+      if (candidateEmail.trim()) {
+        setEmailStatus('sending')
+        sendResultEmail({
+          certificateId: certId,
+          candidateName: candidateName.trim(),
+          candidateEmail: candidateEmail.trim(),
+          specialization: specConfig?.name || 'Бухгалтер',
+          score,
+        })
+          .then((res) => setEmailStatus(res?.ok ? 'sent' : 'error'))
+          .catch(() => setEmailStatus('error'))
+      }
+
+      setStage('result')
+      if (isClean && passed) {
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } })
+      }
+    }
+
+    // Hard cap: finalize after ~2.5s no matter what, so the screen never hangs.
+    const timeout = setTimeout(finalize, 2500)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage])
 
   // Shake effect on violation + take snapshot (with debounce)
   const lastViolationCountRef = useRef(0)
@@ -307,6 +319,31 @@ export default function SkillProofPage() {
     proctoring.startSession()
     setShowConsentModal(false)
     setStage('preparation')
+  }
+
+  // Disclaimer "Начать тестирование" handler: first check the server whether
+  // this email has already completed the test. This is the authoritative gate
+  // against repeat attempts and can't be bypassed with a VPN.
+  const handleBeginAssessment = async () => {
+    if (checkingCompletion) return
+    setCheckingCompletion(true)
+    try {
+      const completion = await getCompletionByEmail(candidateEmail)
+      if (completion.completed) {
+        setExistingCompletion(completion)
+        setStage('already-completed')
+        return
+      }
+      setStage('consent')
+      setShowConsentModal(true)
+    } catch (error) {
+      console.error('[v0] completion check failed:', error)
+      // Fail open: never block a candidate because of a transient error.
+      setStage('consent')
+      setShowConsentModal(true)
+    } finally {
+      setCheckingCompletion(false)
+    }
   }
 
   const handleStartTest = (spec?: SpecializationType) => {
@@ -553,15 +590,83 @@ export default function SkillProofPage() {
               <Button
                 size="lg"
                 className="w-full"
-                disabled={!candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
-                onClick={() => {
-                  setStage('consent')
-                  setShowConsentModal(true)
-                }}
+                disabled={checkingCompletion || !candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
+                onClick={handleBeginAssessment}
               >
-                Начать тестирование
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {checkingCompletion ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Проверка...
+                  </>
+                ) : (
+                  <>
+                    Начать тестирование
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
+            </motion.div>
+          )}
+
+          {stage === 'already-completed' && (
+            <motion.div
+              key="already-completed"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-2xl mx-auto"
+            >
+              <div className="rounded-2xl border bg-card p-8 md:p-10 text-center">
+                <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mb-5">
+                  <ShieldCheck className="h-8 w-8 text-primary" />
+                </div>
+                <h1 className="text-2xl font-bold mb-3 text-balance">
+                  Вы уже завершили тестирование
+                </h1>
+                <p className="text-muted-foreground leading-relaxed mb-6 text-pretty">
+                  Результаты по адресу{' '}
+                  <span className="font-medium text-foreground">{candidateEmail}</span>{' '}
+                  зафиксированы и переданы работодателю. Повторное прохождение
+                  недоступно.
+                </p>
+
+                <div className="rounded-xl border bg-muted/30 p-5 text-left space-y-3 mb-6">
+                  {existingCompletion?.completedAt && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Дата прохождения</span>
+                      <span className="font-medium">
+                        {new Date(existingCompletion.completedAt).toLocaleDateString('ru-RU', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {existingCompletion?.score != null && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Результат</span>
+                      <span className="font-medium">{existingCompletion.score}%</span>
+                    </div>
+                  )}
+                  {existingCompletion?.certificateId && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">ID сертификата</span>
+                      <span className="font-mono text-xs">{existingCompletion.certificateId}</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => router.push('/')}
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  На главную
+                </Button>
+              </div>
             </motion.div>
           )}
 
@@ -1055,7 +1160,7 @@ export default function SkillProofPage() {
                   </div>
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8">
-                    Ваш результат зафиксирован и сохранён.
+                    Ваш рез��льтат зафиксирован и сохранён.
                   </p>
 
                   {/* Score out of 100 */}

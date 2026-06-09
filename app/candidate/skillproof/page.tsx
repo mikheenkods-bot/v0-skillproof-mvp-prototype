@@ -142,131 +142,140 @@ export default function SkillProofPage() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect - calculate real score and save to localStorage
+  // Analysis effect - calculate real score and persist results.
+  // Runs exactly once per "analyzing" stage. The heavy work (scoring, DB save,
+  // email) lives in a dedicated function — NOT inside a setState updater — and
+  // the progress bar is purely visual. A ref guard prevents the duplicate runs
+  // that previously made this stage hang and re-save on every render.
+  const analysisDoneRef = useRef(false)
   useEffect(() => {
-    if (stage !== 'analyzing') return
+    if (stage !== 'analyzing') {
+      analysisDoneRef.current = false
+      return
+    }
+    if (analysisDoneRef.current) return
+    analysisDoneRef.current = true
 
+    // Snapshot violations once so later proctoring events can't restart this.
+    const violationsList = proctoring.violations
+    const violationCount = violationsList.length
+
+    // Visual-only progress animation.
+    setAnalysisProgress(0)
     const interval = setInterval(() => {
-      setAnalysisProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          // Calculate real score based on correct answers (все типы вопросов)
-          let correct = 0
-          questions.forEach((q) => {
-            if (isAnswerCorrect(q, answers[q.id])) {
-              correct++
-            }
-          })
-          setCorrectAnswersCount(correct)
-          const score = Math.round((correct / questions.length) * 100)
-          setFinalScore(score)
-          
-          // Check if passed (4 out of 5 correct)
-          const passed = specialization ? checkTestPassed(specialization, correct) : false
-          const isClean = proctoring.violations.length === 0
-          
-          // Save results to localStorage for profile
-          const now = new Date()
-          const dateStr = now.toLocaleDateString('ru-RU')
-          const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-          
-          // Generate skills based on questions
-          const skillCategories = [...new Set(questions.map(q => q.category))]
-          const skills = skillCategories.map(cat => {
-            const catQuestions = questions.filter(q => q.category === cat)
-            const catCorrect = catQuestions.filter(q => isAnswerCorrect(q, answers[q.id])).length
-            return {
-              name: cat,
-              score: Math.round((catCorrect / catQuestions.length) * 100)
-            }
-          })
-          
-          // Save certificate if passed
-          if (passed) {
-            const certificate = {
-              id: certId,
-              specialization: specConfig?.name || 'Общий тест',
-              score,
-              isClean,
-              date: dateStr,
-              skills,
-              violations: proctoring.violations.length
-            }
-            
-            const existingCerts = JSON.parse(localStorage.getItem('skillverify_certificates') || '[]')
-            existingCerts.push(certificate)
-            localStorage.setItem('skillverify_certificates', JSON.stringify(existingCerts))
-          }
-          
-          // Save proctoring history
-          const proctoringSession = {
-            id: `proc-${Date.now()}`,
-            date: dateStr,
-            type: 'SkillProof',
-            specialization: specConfig?.name || 'Общий тест',
-            status: isClean ? 'clean' : 'violations',
-            violations: proctoring.violations.length
-          }
-          
-          const existingProctoring = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
-          existingProctoring.push(proctoringSession)
-          localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
+      setAnalysisProgress(prev => (prev >= 100 ? 100 : prev + 4))
+    }, 80)
 
-          // Persist the certificate id so the result screen shows a stable value.
-          setCertificateId(certId)
+    const finalize = () => {
+      clearInterval(interval)
+      setAnalysisProgress(100)
 
-          // Persist result to the database (every attempt, pass or fail)
-          // so it can be shared with external systems via the REST API.
-          void saveTestResult({
-            certificateId: certId,
-            candidateName: candidateName.trim() || null,
-            candidateEmail: candidateEmail.trim() || null,
-            specialization: specConfig?.name || 'Бухгалтер',
-            score,
-            correctAnswers: correct,
-            totalQuestions: questions.length,
-            passed,
-            isClean,
-            violations: proctoring.violations.length,
-            skills,
-            proctoringLog: proctoring.violations.map((v) => ({
-              type: (v as { type?: string }).type ?? 'violation',
-              message: (v as { message?: string }).message ?? '',
-            })),
-          })
-
-          // Email the candidate a copy of their result (fire-and-forget).
-          if (candidateEmail.trim()) {
-            setEmailStatus('sending')
-            sendResultEmail({
-              certificateId: certId,
-              candidateName: candidateName.trim(),
-              candidateEmail: candidateEmail.trim(),
-              specialization: specConfig?.name || 'Бухгалтер',
-              score,
-            })
-              .then((res) => setEmailStatus(res?.ok ? 'sent' : 'error'))
-              .catch(() => setEmailStatus('error'))
-          }
-
-          setTimeout(() => {
-            setStage('result')
-            if (isClean && passed) {
-              confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-              })
-            }
-          }, 500)
-          return 100
-        }
-        return prev + 2
+      // Calculate real score based on correct answers (все типы вопросов)
+      let correct = 0
+      questions.forEach((q) => {
+        if (isAnswerCorrect(q, answers[q.id])) correct++
       })
-    }, 100)
+      setCorrectAnswersCount(correct)
+      const score = questions.length ? Math.round((correct / questions.length) * 100) : 0
+      setFinalScore(score)
 
-    return () => clearInterval(interval)
-  }, [stage, answers, questions, proctoring.violations.length, specialization, specConfig?.name, proctoring.violations])
+      const passed = specialization ? checkTestPassed(specialization, correct) : false
+      const isClean = violationCount === 0
+
+      const now = new Date()
+      const dateStr = now.toLocaleDateString('ru-RU')
+      const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+
+      // Generate skills based on question categories
+      const skillCategories = [...new Set(questions.map(q => q.category))]
+      const skills = skillCategories.map(cat => {
+        const catQuestions = questions.filter(q => q.category === cat)
+        const catCorrect = catQuestions.filter(q => isAnswerCorrect(q, answers[q.id])).length
+        return {
+          name: cat,
+          score: Math.round((catCorrect / catQuestions.length) * 100),
+        }
+      })
+
+      // Save certificate to localStorage if passed
+      if (passed) {
+        const certificate = {
+          id: certId,
+          specialization: specConfig?.name || 'Общий тест',
+          score,
+          isClean,
+          date: dateStr,
+          skills,
+          violations: violationCount,
+        }
+        const existingCerts = JSON.parse(localStorage.getItem('skillverify_certificates') || '[]')
+        existingCerts.push(certificate)
+        localStorage.setItem('skillverify_certificates', JSON.stringify(existingCerts))
+      }
+
+      // Save proctoring history
+      const proctoringSession = {
+        id: `proc-${Date.now()}`,
+        date: dateStr,
+        type: 'SkillProof',
+        specialization: specConfig?.name || 'Общий тест',
+        status: isClean ? 'clean' : 'violations',
+        violations: violationCount,
+      }
+      const existingProctoring = JSON.parse(localStorage.getItem('skillverify_proctoring_history') || '[]')
+      existingProctoring.push(proctoringSession)
+      localStorage.setItem('skillverify_proctoring_history', JSON.stringify(existingProctoring))
+
+      setCertificateId(certId)
+
+      // Persist result to the database (every attempt, pass or fail).
+      void saveTestResult({
+        certificateId: certId,
+        candidateName: candidateName.trim() || null,
+        candidateEmail: candidateEmail.trim() || null,
+        specialization: specConfig?.name || 'Бухгалтер',
+        score,
+        correctAnswers: correct,
+        totalQuestions: questions.length,
+        passed,
+        isClean,
+        violations: violationCount,
+        skills,
+        proctoringLog: violationsList.map((v) => ({
+          type: (v as { type?: string }).type ?? 'violation',
+          message: (v as { message?: string }).message ?? '',
+        })),
+      })
+
+      // Email the candidate a copy of their result (fire-and-forget).
+      if (candidateEmail.trim()) {
+        setEmailStatus('sending')
+        sendResultEmail({
+          certificateId: certId,
+          candidateName: candidateName.trim(),
+          candidateEmail: candidateEmail.trim(),
+          specialization: specConfig?.name || 'Бухгалтер',
+          score,
+        })
+          .then((res) => setEmailStatus(res?.ok ? 'sent' : 'error'))
+          .catch(() => setEmailStatus('error'))
+      }
+
+      setStage('result')
+      if (isClean && passed) {
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } })
+      }
+    }
+
+    // Hard cap: finalize after ~2.5s no matter what, so the screen never hangs.
+    const timeout = setTimeout(finalize, 2500)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage])
 
   // Shake effect on violation + take snapshot (with debounce)
   const lastViolationCountRef = useRef(0)

@@ -159,13 +159,16 @@ export function ConsentModal({
   }, [isOpen, step])
 
   useEffect(() => {
-    // Cleanup camera stream on unmount
+    // Cleanup camera + mic streams on unmount
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop())
       }
+      if (micStream) {
+        micStream.getTracks().forEach(track => track.stop())
+      }
     }
-  }, [cameraStream])
+  }, [cameraStream, micStream])
 
   const runCheck = async () => {
     setIsChecking(true)
@@ -176,28 +179,72 @@ export function ConsentModal({
   }
 
   const requestCamera = useCallback(async () => {
+    setRequestingCamera(true)
+    setCameraError(null)
+    // getUserMedia is only available in a secure context (https/localhost) and
+    // when the page is allowed to use the camera (Permissions Policy). In a
+    // sandboxed iframe without allow="camera" navigator.mediaDevices is undefined.
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        'Камера недоступна. Откройте тест в отдельной вкладке браузера (не во встроенном окне) по защищённому адресу https.'
+      )
+      setCameraEnabled(false)
+      setRequestingCamera(false)
+      return
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: 320, height: 240 } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       })
+      // The useEffect bound to cameraStream attaches the stream to <video>.
       setCameraStream(stream)
       setCameraEnabled(true)
       setCameraError(null)
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
     } catch (err) {
-      setCameraError('Не удалось получить доступ к камере')
+      const name = (err as DOMException)?.name
+      let message = 'Не удалось получить доступ к камере.'
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        message = 'Доступ к камере заблокирован. Разрешите камеру в настройках браузера и повторите.'
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        message = 'Камера не найдена. Подключите веб-камеру и повторите попытку.'
+      } else if (name === 'NotReadableError') {
+        message = 'Камера занята другим приложением. Закройте другие программы (Zoom, Teams) и повторите.'
+      }
+      setCameraError(message)
       setCameraEnabled(false)
+    } finally {
+      setRequestingCamera(false)
     }
   }, [])
 
   const requestMicrophone = useCallback(async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true })
-      setMicEnabled(true)
-    } catch {
+    setRequestingMic(true)
+    setMicError(null)
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMicError(
+        'Микрофон недоступен. Откройте тест в отдельной вкладке браузера по защищённому адресу https.'
+      )
       setMicEnabled(false)
+      setRequestingMic(false)
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      setMicStream(stream)
+      setMicEnabled(true)
+      setMicError(null)
+    } catch (err) {
+      const name = (err as DOMException)?.name
+      let message = 'Не удалось получить доступ к микрофону.'
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        message = 'Доступ к микрофону заблокирован. Разрешите микрофон в настройках браузера и повторите.'
+      } else if (name === 'NotFoundError') {
+        message = 'Микрофон не найден. Подключите микрофон и повторите попытку.'
+      }
+      setMicError(message)
+      setMicEnabled(false)
+    } finally {
+      setRequestingMic(false)
     }
   }, [])
 
@@ -449,13 +496,14 @@ export function ConsentModal({
               <Button
                 variant={cameraEnabled ? "secondary" : "outline"}
                 size="sm"
+                disabled={requestingCamera}
                 onClick={cameraEnabled ? () => {
                   cameraStream?.getTracks().forEach(t => t.stop())
                   setCameraStream(null)
                   setCameraEnabled(false)
                 } : requestCamera}
               >
-                {cameraEnabled ? 'Отключить' : 'Включить'}
+                {requestingCamera ? 'Запрос...' : cameraEnabled ? 'Отключить' : 'Включить'}
               </Button>
             </div>
           </div>
@@ -483,13 +531,21 @@ export function ConsentModal({
                 <p className="text-sm text-muted-foreground mt-1">
                   Детектирование голоса и посторонних звуков
                 </p>
+                {micError && (
+                  <p className="text-sm text-destructive mt-2">{micError}</p>
+                )}
               </div>
               <Button
                 variant={micEnabled ? "secondary" : "outline"}
                 size="sm"
-                onClick={micEnabled ? () => setMicEnabled(false) : requestMicrophone}
+                disabled={requestingMic}
+                onClick={micEnabled ? () => {
+                  micStream?.getTracks().forEach(t => t.stop())
+                  setMicStream(null)
+                  setMicEnabled(false)
+                } : requestMicrophone}
               >
-                {micEnabled ? 'Отключить' : 'Включить'}
+                {requestingMic ? 'Запрос...' : micEnabled ? 'Отключить' : 'Включить'}
               </Button>
             </div>
           </div>

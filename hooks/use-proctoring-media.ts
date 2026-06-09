@@ -108,6 +108,19 @@ export function useProctoringMedia(options: UseProctoringMediaOptions = {}) {
   // === Camera Functions ===
 
   const enableCamera = useCallback(async (): Promise<boolean> => {
+    // getUserMedia requires a secure context (https/localhost) and camera
+    // permission via Permissions Policy. In a sandboxed iframe without
+    // allow="camera", navigator.mediaDevices is undefined.
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setCameraState(prev => ({
+        ...prev,
+        isEnabled: false,
+        stream: null,
+        error: 'Камера недоступна. Откройте тест в отдельной вкладке браузера по защищённому адресу (https).'
+      }))
+      setPermissions(prev => ({ ...prev, camera: 'denied' }))
+      return false
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -126,17 +139,31 @@ export function useProctoringMedia(options: UseProctoringMediaOptions = {}) {
 
       setPermissions(prev => ({ ...prev, camera: 'granted' }))
 
-      // Create hidden video element for snapshots
+      // Hidden video element used as the snapshot source. We position it
+      // offscreen instead of display:none — some browsers won't decode frames
+      // for a fully hidden <video>, which produced blank snapshots.
       if (!videoRef.current) {
         const video = document.createElement('video')
         video.autoplay = true
         video.playsInline = true
         video.muted = true
-        video.style.display = 'none'
+        video.setAttribute('aria-hidden', 'true')
+        video.style.position = 'fixed'
+        video.style.width = '1px'
+        video.style.height = '1px'
+        video.style.opacity = '0'
+        video.style.pointerEvents = 'none'
+        video.style.left = '-9999px'
         document.body.appendChild(video)
         videoRef.current = video
       }
       videoRef.current.srcObject = stream
+      // Ensure the stream actually starts decoding frames.
+      try {
+        await videoRef.current.play()
+      } catch {
+        // Autoplay may reject silently; frames will still decode once visible.
+      }
 
       // Create canvas for snapshots
       if (!canvasRef.current) {
@@ -150,7 +177,15 @@ export function useProctoringMedia(options: UseProctoringMediaOptions = {}) {
 
       return true
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Не удалось получить доступ к камере'
+      const name = (err as DOMException)?.name
+      let errorMessage = 'Не удалось получить доступ к камере.'
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        errorMessage = 'Доступ к камере заблокирован. Разрешите камеру в настройках браузера.'
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        errorMessage = 'Камера не найдена. Подключите веб-камеру и повторите.'
+      } else if (name === 'NotReadableError') {
+        errorMessage = 'Камера занята другим приложением. Закройте Zoom/Teams и повторите.'
+      }
       setCameraState(prev => ({
         ...prev,
         isEnabled: false,
@@ -222,6 +257,16 @@ export function useProctoringMedia(options: UseProctoringMediaOptions = {}) {
   // === Microphone Functions ===
 
   const enableMicrophone = useCallback(async (): Promise<boolean> => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMicState(prev => ({
+        ...prev,
+        isEnabled: false,
+        stream: null,
+        error: 'Микрофон недоступен. Откройте тест в отдельной вкладке браузера по защищённому адресу (https).'
+      }))
+      setPermissions(prev => ({ ...prev, microphone: 'denied' }))
+      return false
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {

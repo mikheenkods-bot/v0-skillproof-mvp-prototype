@@ -23,7 +23,7 @@ import {
   type Question
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
-import { saveTestResult } from '@/app/actions/test-results'
+import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
 import { sendResultEmail } from '@/app/actions/send-result-email'
 import {
   Shield,
@@ -47,7 +47,7 @@ import {
   Mail
 } from 'lucide-react'
 
-type Stage = 'disclaimer' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -81,6 +81,9 @@ export default function SkillProofPage() {
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
   const [mediaEnabled, setMediaEnabled] = useState({ camera: false, mic: false })
   const [lastSnapshotReason, setLastSnapshotReason] = useState<string | undefined>()
+  // Server-side repeat-attempt gate (by email — VPN-proof, unlike an IP check).
+  const [checkingCompletion, setCheckingCompletion] = useState(false)
+  const [existingCompletion, setExistingCompletion] = useState<ExistingCompletion | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Questions are randomized per attempt (set in handleStartTest), so each
@@ -307,6 +310,31 @@ export default function SkillProofPage() {
     proctoring.startSession()
     setShowConsentModal(false)
     setStage('preparation')
+  }
+
+  // Disclaimer "Начать тестирование" handler: first check the server whether
+  // this email has already completed the test. This is the authoritative gate
+  // against repeat attempts and can't be bypassed with a VPN.
+  const handleBeginAssessment = async () => {
+    if (checkingCompletion) return
+    setCheckingCompletion(true)
+    try {
+      const completion = await getCompletionByEmail(candidateEmail)
+      if (completion.completed) {
+        setExistingCompletion(completion)
+        setStage('already-completed')
+        return
+      }
+      setStage('consent')
+      setShowConsentModal(true)
+    } catch (error) {
+      console.error('[v0] completion check failed:', error)
+      // Fail open: never block a candidate because of a transient error.
+      setStage('consent')
+      setShowConsentModal(true)
+    } finally {
+      setCheckingCompletion(false)
+    }
   }
 
   const handleStartTest = (spec?: SpecializationType) => {
@@ -553,15 +581,83 @@ export default function SkillProofPage() {
               <Button
                 size="lg"
                 className="w-full"
-                disabled={!candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
-                onClick={() => {
-                  setStage('consent')
-                  setShowConsentModal(true)
-                }}
+                disabled={checkingCompletion || !candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
+                onClick={handleBeginAssessment}
               >
-                Начать тестирование
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {checkingCompletion ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Проверка...
+                  </>
+                ) : (
+                  <>
+                    Начать тестирование
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
+            </motion.div>
+          )}
+
+          {stage === 'already-completed' && (
+            <motion.div
+              key="already-completed"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-2xl mx-auto"
+            >
+              <div className="rounded-2xl border bg-card p-8 md:p-10 text-center">
+                <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mb-5">
+                  <ShieldCheck className="h-8 w-8 text-primary" />
+                </div>
+                <h1 className="text-2xl font-bold mb-3 text-balance">
+                  Вы уже завершили тестирование
+                </h1>
+                <p className="text-muted-foreground leading-relaxed mb-6 text-pretty">
+                  Результаты по адресу{' '}
+                  <span className="font-medium text-foreground">{candidateEmail}</span>{' '}
+                  зафиксированы и переданы работодателю. Повторное прохождение
+                  недоступно.
+                </p>
+
+                <div className="rounded-xl border bg-muted/30 p-5 text-left space-y-3 mb-6">
+                  {existingCompletion?.completedAt && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Дата прохождения</span>
+                      <span className="font-medium">
+                        {new Date(existingCompletion.completedAt).toLocaleDateString('ru-RU', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {existingCompletion?.score != null && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Результат</span>
+                      <span className="font-medium">{existingCompletion.score}%</span>
+                    </div>
+                  )}
+                  {existingCompletion?.certificateId && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">ID сертификата</span>
+                      <span className="font-mono text-xs">{existingCompletion.certificateId}</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => router.push('/')}
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  На главную
+                </Button>
+              </div>
             </motion.div>
           )}
 
@@ -1055,7 +1151,7 @@ export default function SkillProofPage() {
                   </div>
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8">
-                    Ваш результат зафиксирован и сохранён.
+                    Ваш рез��льтат зафиксирован и сохранён.
                   </p>
 
                   {/* Score out of 100 */}

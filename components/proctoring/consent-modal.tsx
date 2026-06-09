@@ -132,8 +132,25 @@ export function ConsentModal({
   const [isChecking, setIsChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<SystemCheckResult | null>(systemCheck)
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [micError, setMicError] = useState<string | null>(null)
+  const [requestingCamera, setRequestingCamera] = useState(false)
+  const [requestingMic, setRequestingMic] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Bind the camera stream to the <video> element AFTER it has been rendered.
+  // Setting srcObject inside the request handler races the render: the <video>
+  // is only mounted once cameraEnabled && cameraStream are true, so the ref is
+  // still null at that point and the preview stays black.
+  useEffect(() => {
+    const video = videoRef.current
+    if (video && cameraStream) {
+      video.srcObject = cameraStream
+      // Some browsers need an explicit play() call when srcObject is set late.
+      video.play().catch(() => {})
+    }
+  }, [cameraStream, cameraEnabled])
 
   useEffect(() => {
     if (isOpen && step === 'permissions' && !checkResult) {

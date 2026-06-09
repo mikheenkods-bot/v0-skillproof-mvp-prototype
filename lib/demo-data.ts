@@ -314,6 +314,70 @@ export const marketingQuestions: Question[] = [
     explanation: 'Средний цикл сделки в недвижимости составляет 3-6 месяцев от первого контакта до покупки.',
     complexity: 'easy',
     category: 'Лидогенерация'
+  },
+  {
+    id: 'm6',
+    text: 'Рекламный бюджет 300 000 ₽ принёс 150 лидов. Чему равен CPL?',
+    type: 'numeric',
+    numericAnswer: 2000,
+    explanation: 'CPL = бюджет / число лидов = 300 000 / 150 = 2 000 ₽ за лид.',
+    complexity: 'medium',
+    category: 'ROI-анализ'
+  },
+  {
+    id: 'm7',
+    text: 'Что из перечисленного относится к каналам лидогенерации в недвижимости? Выберите все подходящие варианты.',
+    type: 'multiple_select',
+    options: [
+      'Контекстная реклама (Яндекс.Директ)',
+      'Классифайды (Авито, Циан, ДомКлик)',
+      'Начисление амортизации',
+      'Таргет в соцсетях'
+    ],
+    correctAnswers: [0, 1, 3],
+    explanation: 'Контекст, классифайды и таргет — реальные каналы привлечения лидов. Амортизация — бухгалтерский термин и к маркетингу отношения не имеет.',
+    complexity: 'medium',
+    category: 'Лидогенерация'
+  },
+  {
+    id: 'm8',
+    text: 'Что показывает метрика конверсии из лида в сделку?',
+    type: 'multiple_choice',
+    options: [
+      'Сколько денег потрачено на рекламу',
+      'Какая доля обратившихся лидов дошла до покупки',
+      'Сколько показов получило объявление',
+      'Среднюю стоимость квартиры'
+    ],
+    correctAnswer: 1,
+    explanation: 'Конверсия лид→сделка = число сделок / число лидов. Показывает качество лидов и работу отдела продаж.',
+    complexity: 'easy',
+    category: 'ROI-анализ'
+  },
+  {
+    id: 'm9',
+    text: 'Опишите, как бы вы выстроили воронку привлечения покупателей для нового ЖК комфорт-класса с нуля. Какие каналы, этапы и метрики вы бы заложили?',
+    type: 'open',
+    keywords: ['канал', 'воронка', 'лид', 'конверсия', 'cpl', 'таргет', 'crm', 'этап'],
+    keywordThreshold: 0.4,
+    sampleAnswer: 'Определение ЦА → выбор каналов (контекст, классифайды, таргет) → лид-магнит и формы захвата → CRM с этапами длинной воронки → прогрев и звонки → метрики CPL, конверсия лид→показ→сделка.',
+    complexity: 'hard',
+    category: 'Лидогенерация'
+  },
+  {
+    id: 'm10',
+    text: 'Что НЕ является корректной причиной высокого CPL при стабильном количестве показов?',
+    type: 'multiple_choice',
+    options: [
+      'Низкая релевантность объявления аудитории',
+      'Слабый оффер и креатив',
+      'Неправильно настроенный таргетинг',
+      'Слишком длинный срок хранения первичных документов'
+    ],
+    correctAnswer: 3,
+    explanation: 'Срок хранения документов — бухгалтерская тема и на CPL не влияет. Остальные факторы напрямую повышают стоимость лида.',
+    complexity: 'medium',
+    category: 'ROI-анализ'
   }
 ]
 
@@ -380,6 +444,65 @@ export const accountingQuestions: Question[] = [
     correctAnswer: 1,
     explanation: 'Первичные документы хранятся минимум 5 лет после отчетного года. Документы по зарплате — 75 лет.',
     complexity: 'medium',
+    category: 'Отчетность'
+  },
+  {
+    id: 'a6',
+    text: 'Доходы ИП на УСН 6% за год составили 2 400 000 ₽. Чему равен налог (без учёта страховых взносов)?',
+    type: 'numeric',
+    numericAnswer: 144000,
+    explanation: 'Налог УСН 6% = 2 400 000 × 6% = 144 000 ₽ (до вычета страховых взносов).',
+    complexity: 'medium',
+    category: 'Налогообложение'
+  },
+  {
+    id: 'a7',
+    text: 'Какие из перечисленных отчётов сдаёт ООО на УСН? Выберите все подходящие варианты.',
+    type: 'multiple_select',
+    options: [
+      'Декларация по УСН',
+      'Бухгалтерская отчётность',
+      'Декларация по налогу на прибыль',
+      'Расчёт по страховым взносам (РСВ)'
+    ],
+    correctAnswers: [0, 1, 3],
+    explanation: 'ООО на УСН сдаёт декларацию по УСН, бухотчётность и РСВ (если есть сотрудники). Декларацию по налогу на прибыль на УСН не сдают.',
+    complexity: 'hard',
+    category: 'Отчетность'
+  },
+  {
+    id: 'a8',
+    text: 'Что отражает счёт 51 в бухгалтерском учёте?',
+    type: 'multiple_choice',
+    options: [
+      'Касса организации',
+      'Расчётные счета в банках',
+      'Расчёты с поставщиками',
+      'Основные средства'
+    ],
+    correctAnswer: 1,
+    explanation: 'Счёт 51 «Расчётные счета» отражает безналичные денежные средства в банках. Касса — счёт 50.',
+    complexity: 'easy',
+    category: '1С:Бухгалтерия'
+  },
+  {
+    id: 'a9',
+    text: 'Объясните своими словами, в чём разница между УСН «Доходы» (6%) и УСН «Доходы минус расходы» (15%) и как выбрать выгодный режим для малого бизнеса.',
+    type: 'open',
+    keywords: ['доход', 'расход', '60', 'маржа', 'выгодн', 'ставка', 'объект'],
+    keywordThreshold: 0.4,
+    sampleAnswer: 'УСН 6% — налог со всех доходов, проще в учёте. УСН 15% — налог с разницы доходов и расходов, выгоден когда расходы превышают ~60% доходов и их можно документально подтвердить.',
+    complexity: 'hard',
+    category: 'Налогообложение'
+  },
+  {
+    id: 'a10',
+    text: 'До какого числа ИП на УСН обязан подать годовую декларацию?',
+    type: 'multiple_choice',
+    options: ['До 31 марта', 'До 30 апреля', 'До 25 января', 'До 15 июля'],
+    correctAnswer: 1,
+    explanation: 'ИП на УСН подают декларацию до 30 апреля года, следующего за отчётным (ООО — до 31 марта).',
+    complexity: 'easy',
     category: 'Отчетность'
   }
 ]
@@ -483,7 +606,7 @@ export const accountantQuestions: Question[] = [
     id: 'acc_kb7',
     text: 'Перечислите счета синтетического учёта денежных средств и кратко поясните назначение каждого.',
     type: 'open',
-    keywords: ['касса', 'наличные', 'расчетные', 'счета', 'безналичные', 'рубли', 'валютные', 'средства'],
+    keywords: ['касса', 'наличные', 'расчетные', 'счета', 'безналичные', 'ру��ли', 'валютные', 'средства'],
     sampleAnswer: '50 «Касса» — наличные; 51 «Расчётные счета» — безналичные рубли; 52 «Валютные счета» — средства в иностранной валюте; 55 «Специальные счета в банках» — аккредитивы, депозиты, чековые книжки; 57 «Переводы в пути» — деньги, сданные в банк, но не зачисленные.',
     explanation: 'Группа счетов раздела V Плана счетов (приказ Минфина № 94н).',
     complexity: 'medium',
@@ -901,7 +1024,7 @@ export const accountantQuestions: Question[] = [
       '12 000 руб.',
     ],
     correctAnswer: 0,
-    explanation: 'На первого ребёнка — 1 400 руб., на второго — 2 800 руб., на третьего и каждого последующего — 6 000 руб. (подп. 4 п. 1 ст. 218 НК РФ).',
+    explanation: 'На ��ервого ребёнка — 1 400 руб., на второго — 2 800 руб., на третьего и каждого последующего — 6 000 руб. (подп. 4 п. 1 ст. 218 НК РФ).',
     complexity: 'medium',
     category: 'НДФЛ'
   },
@@ -931,7 +1054,7 @@ export const accountantQuestions: Question[] = [
       'Налоговый агент — банк',
     ],
     correctAnswer: 0,
-    explanation: 'НДФЛ платит физлицо, но работодатель как налоговый агент исчисляет, удерживает и перечисляет налог (ст. 226 НК РФ).',
+    explanation: '��ДФЛ платит физлицо, но работодатель как налоговый агент исчисляет, удерживает и перечисляет налог (ст. 226 НК РФ).',
     complexity: 'medium',
     category: 'НДФЛ'
   },
@@ -1250,9 +1373,49 @@ export function shuffleArray<T>(array: T[]): T[] {
 
 // Случайная выборка вопросов из банка для конкретной попытки.
 // Каждый кандидат и каждая попытка получают разный набор и порядок вопросов.
-export function getRandomQuestions(spec: SpecializationType, count = 5): Question[] {
+/**
+ * Перемешивает варианты ответа для multiple_choice / multiple_select и
+ * переотображает индексы правильных ответов. Это убирает паттерн
+ * "правильный ответ всегда А", который кандидат мог бы запомнить.
+ */
+function shuffleOptions(question: Question): Question {
+  if (
+    (question.type !== 'multiple_choice' && question.type !== 'multiple_select') ||
+    !question.options ||
+    question.options.length === 0
+  ) {
+    return question
+  }
+
+  // Пары [исходный индекс, текст], затем перемешиваем.
+  const indexed = question.options.map((text, idx) => ({ text, idx }))
+  const shuffled = shuffleArray(indexed)
+  const newOptions = shuffled.map((o) => o.text)
+  // old index -> new index
+  const remap = new Map<number, number>()
+  shuffled.forEach((o, newIdx) => remap.set(o.idx, newIdx))
+
+  const next: Question = { ...question, options: newOptions }
+
+  if (question.type === 'multiple_choice' && typeof question.correctAnswer === 'number') {
+    next.correctAnswer = remap.get(question.correctAnswer) ?? question.correctAnswer
+  }
+  if (question.type === 'multiple_select' && Array.isArray(question.correctAnswers)) {
+    next.correctAnswers = question.correctAnswers
+      .map((i) => remap.get(i) ?? i)
+      .sort((a, b) => a - b)
+  }
+
+  return next
+}
+
+export function getRandomQuestions(spec: SpecializationType, count = 10): Question[] {
   const bank = specializations[spec]?.questions || []
-  return shuffleArray(bank).slice(0, count)
+  // Не запрашиваем больше, чем есть в банке.
+  const take = Math.min(count, bank.length)
+  return shuffleArray(bank)
+    .slice(0, take)
+    .map((q) => shuffleOptions(q))
 }
 
 /**
@@ -1338,7 +1501,7 @@ export const accountantAIQuestions: AIInterviewQuestion[] = [
   },
   {
     id: 'acc_ai2',
-    text: 'Опишите ваш порядок подготовки к сдаче годовой бухгалтерской отчётности: что проверяете в первую очередь, как закрываете счета, как сверяете расчёты с контрагентами?',
+    text: 'Опишите ваш порядок подготовки к сдаче годовой бухгалтерской отчётн��сти: что проверяете в первую очередь, как закрываете счета, как сверяете расчёты с контрагентами?',
     specialization: 'accountant'
   },
   {
@@ -1407,6 +1570,65 @@ export const accountManagerQuestions: Question[] = [
     explanation: 'Retention = (200 − 12) / 200 = 94%. Отток (churn) при этом равен 6%.',
     complexity: 'medium',
     category: 'Retention'
+  },
+  {
+    id: 'am6',
+    text: 'CAC равен 20 000 ₽, LTV клиента (по марже) — 60 000 ₽. Чему равно соотношение LTV:CAC?',
+    type: 'numeric',
+    numericAnswer: 3,
+    explanation: 'LTV:CAC = 60 000 / 20 000 = 3. Это как раз минимально здоровый уровень для устойчивой unit-экономики.',
+    complexity: 'medium',
+    category: 'LTV/CAC'
+  },
+  {
+    id: 'am7',
+    text: 'Что из перечисленного относится к признакам приближающегося оттока (churn) клиента? Выберите все подходящие варианты.',
+    type: 'multiple_select',
+    options: [
+      'Снижение частоты использования продукта',
+      'Рост числа обращений в поддержку с жалобами',
+      'Игнорирование писем и звонков менеджера',
+      'Покупка дополнительного модуля'
+    ],
+    correctAnswers: [0, 1, 2],
+    explanation: 'Падение активности, рост жалоб и отказ от коммуникации — ранние сигналы оттока. Покупка доп. модуля, наоборот, признак вовлечённости.',
+    complexity: 'medium',
+    category: 'Retention'
+  },
+  {
+    id: 'am8',
+    text: 'Что такое QBR (Quarterly Business Review) в работе с ключевыми клиентами?',
+    type: 'multiple_choice',
+    options: [
+      'Ежеквартальный отчёт по налогам',
+      'Регулярная встреча с клиентом для разбора результатов и планирования',
+      'Квартальная скидка для клиента',
+      'Внутренний отчёт о продажах'
+    ],
+    correctAnswer: 1,
+    explanation: 'QBR — ежеквартальная стратегическая встреча с клиентом: разбор достигнутой ценности, метрик и планов на следующий период.',
+    complexity: 'easy',
+    category: 'QBR'
+  },
+  {
+    id: 'am9',
+    text: 'Ключевой клиент недоволен и угрожает уйти к конкуренту. Опишите ваш план действий по удержанию: какие шаги и в каком порядке вы предпримете?',
+    type: 'open',
+    keywords: ['выяснить', 'причин', 'ценность', 'эскалац', 'план', 'встреч', 'удержан', 'решение'],
+    keywordThreshold: 0.35,
+    sampleAnswer: 'Выяснить истинную причину недовольства → признать проблему → привлечь нужные ресурсы/эскалация → предложить конкретный план решения с сроками → зафиксировать договорённости и проконтролировать выполнение.',
+    complexity: 'hard',
+    category: 'Возражения'
+  },
+  {
+    id: 'am10',
+    text: 'Клиенту, купившему CRM, вы предлагаете дополнительно модуль телефонии. Это:',
+    type: 'multiple_choice',
+    options: ['Ап-сейл', 'Кросс-сейл', 'Даунсейл', 'Реактивация'],
+    correctAnswer: 1,
+    explanation: 'Кросс-сейл — продажа дополнительного смежного продукта к уже купленному. Ап-сейл — переход на более дорогую версию того же продукта.',
+    complexity: 'easy',
+    category: 'Продажи'
   }
 ]
 
@@ -1455,7 +1677,7 @@ export const specializations: Record<SpecializationType, Specialization> = {
       text,
       specialization: 'marketing'
     })),
-    passingScore: 4
+    passingScore: 7
   },
   accounting: {
     id: 'accounting',
@@ -1469,7 +1691,7 @@ export const specializations: Record<SpecializationType, Specialization> = {
       text,
       specialization: 'accounting'
     })),
-    passingScore: 4
+    passingScore: 7
   },
   accountant: {
     id: 'accountant',
@@ -1479,7 +1701,7 @@ export const specializations: Record<SpecializationType, Specialization> = {
     color: 'emerald',
     questions: accountantQuestions,
     aiInterviewQuestions: accountantAIQuestions,
-    passingScore: 4
+    passingScore: 7
   },
   account_manager: {
     id: 'account_manager',
@@ -1489,7 +1711,7 @@ export const specializations: Record<SpecializationType, Specialization> = {
     color: 'violet',
     questions: accountManagerQuestions,
     aiInterviewQuestions: accountManagerAIQuestions,
-    passingScore: 4
+    passingScore: 7
   }
 }
 

@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils'
 import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
 import { sendResultEmail } from '@/app/actions/send-result-email'
+import { gradeOpenAnswers, type OpenAnswerInput } from '@/app/actions/grade-open-answers'
 import {
   Shield,
   Building2,
@@ -166,17 +167,62 @@ export default function SkillProofPage() {
       setAnalysisProgress(prev => (prev >= 100 ? 100 : prev + 4))
     }, 80)
 
-    const finalize = () => {
+    const finalize = async () => {
       clearInterval(interval)
       setAnalysisProgress(100)
 
-      // Calculate real score based on correct answers (все типы вопросов)
-      let correct = 0
-      questions.forEach((q) => {
-        if (isAnswerCorrect(q, answers[q.id])) correct++
-      })
+      // 1) Объективные вопросы (выбор/множественный выбор/числовой) — точная проверка.
+      //    Открытые вопросы теста оцениваются ИИ по смыслу (ниже).
+      const openTestQuestions = questions.filter((q) => q.type === 'open')
+      const objectiveQuestions = questions.filter((q) => q.type !== 'open')
+
+      // 2) Готовим список открытых ответов теста + ответов AI-интервью для AI-оценки.
+      const openTestInputs: OpenAnswerInput[] = openTestQuestions.map((q) => ({
+        question: q.text,
+        answer: String(answers[q.id] ?? ''),
+        reference: q.sampleAnswer,
+      }))
+      const interviewInputs: OpenAnswerInput[] = aiQuestions.map((q, i) => ({
+        question: q.text,
+        answer: interviewAnswers[i] ?? '',
+      }))
+
+      // Один вызов на всё — дешевле и быстрее. Порядок сохраняется.
+      const allOpenInputs = [...openTestInputs, ...interviewInputs]
+      let openGrades: number[] = []
+      if (allOpenInputs.length > 0) {
+        // Гонка с таймаутом, чтобы экран не зависал при медленном ответе ИИ.
+        const fallback = new Promise<{ answers: { score: number }[] }>((resolve) =>
+          setTimeout(
+            () => resolve({ answers: allOpenInputs.map((i) => ({ score: i.answer.trim() ? 50 : 0 })) }),
+            15000
+          )
+        )
+        const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
+        openGrades = result.answers.map((a) => a.score)
+      }
+
+      const openTestGrades = openGrades.slice(0, openTestInputs.length)
+      const interviewGrades = openGrades.slice(openTestInputs.length)
+
+      // 3) Балл за каждый элемент в шкале 0-100.
+      //    Объективный вопрос: верно = 100, неверно = 0.
+      //    Открытый/интервью: оценка ИИ (0-100).
+      const objectiveItemScores = objectiveQuestions.map((q) =>
+        isAnswerCorrect(q, answers[q.id]) ? 100 : 0
+      )
+
+      // "Правильных ответов: X из N" — по вопросам теста (открытый зачитывается при >= 60).
+      const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
+      const openCorrect = openTestGrades.filter((s) => s >= 60).length
+      const correct = objectiveCorrect + openCorrect
       setCorrectAnswersCount(correct)
-      const score = questions.length ? Math.round((correct / questions.length) * 100) : 0
+
+      // 4) Итоговый балл = среднее по ВСЕМ элементам, включая открытые ответы и AI-интервью.
+      const allItemScores = [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
+      const score = allItemScores.length
+        ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
+        : 0
       setFinalScore(score)
 
       const passed = specialization ? checkTestPassed(specialization, correct) : false
@@ -186,14 +232,20 @@ export default function SkillProofPage() {
       const dateStr = now.toLocaleDateString('ru-RU')
       const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 
-      // Generate skills based on question categories
-      const skillCategories = [...new Set(questions.map(q => q.category))]
-      const skills = skillCategories.map(cat => {
-        const catQuestions = questions.filter(q => q.category === cat)
-        const catCorrect = catQuestions.filter(q => isAnswerCorrect(q, answers[q.id])).length
+      // Навыки по категориям. Открытые вопросы вносят свой AI-балл, объективные — 0/100.
+      const openScoreByQuestionId = new Map<string, number>()
+      openTestQuestions.forEach((q, i) => openScoreByQuestionId.set(q.id, openTestGrades[i] ?? 0))
+
+      const skillCategories = [...new Set(questions.map((q) => q.category))]
+      const skills = skillCategories.map((cat) => {
+        const catQuestions = questions.filter((q) => q.category === cat)
+        const total = catQuestions.reduce((sum, q) => {
+          if (q.type === 'open') return sum + (openScoreByQuestionId.get(q.id) ?? 0)
+          return sum + (isAnswerCorrect(q, answers[q.id]) ? 100 : 0)
+        }, 0)
         return {
           name: cat,
-          score: Math.round((catCorrect / catQuestions.length) * 100),
+          score: catQuestions.length ? Math.round(total / catQuestions.length) : 0,
         }
       })
 
@@ -267,8 +319,11 @@ export default function SkillProofPage() {
       }
     }
 
-    // Hard cap: finalize after ~2.5s no matter what, so the screen never hangs.
-    const timeout = setTimeout(finalize, 2500)
+    // Запускаем оценку после короткой задержки (для визуала прогресса).
+    // finalize сам устойчив к сбоям ИИ (fail-open + таймаут), поэтому не зависнет.
+    const timeout = setTimeout(() => {
+      void finalize()
+    }, 600)
 
     return () => {
       clearInterval(interval)
@@ -352,7 +407,7 @@ export default function SkillProofPage() {
     const activeSpec = spec ?? specialization
     // Generate a fresh randomized set of questions for this attempt.
     if (activeSpec) {
-      setQuestions(getRandomQuestions(activeSpec, 5))
+      setQuestions(getRandomQuestions(activeSpec, 10))
     }
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
@@ -1160,7 +1215,7 @@ export default function SkillProofPage() {
                   </div>
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8">
-                    Ваш рез��льтат зафиксирован и сохранён.
+                    Ваш результат зафиксирован и сохранён.
                   </p>
 
                   {/* Score out of 100 */}

@@ -17,7 +17,6 @@ import {
   specializations, 
   getRandomQuestions,
   getAIQuestionsForSpecialization,
-  checkTestPassed,
   isAnswerCorrect,
   type SpecializationType,
   type Question
@@ -188,17 +187,18 @@ export default function SkillProofPage() {
       }))
 
       // Один вызов на всё — дешевле и быстрее. Порядок сохраняется.
+      // ГИБРИДНЫЙ РЕЖИМ: если AI-оценка недоступна (нет карты/сбой шлюза),
+      // открытые ответы и интервью НЕ влияют на балл — считаем только вопросы с вариантами.
       const allOpenInputs = [...openTestInputs, ...interviewInputs]
       let openGrades: number[] = []
+      let aiGraded = false
       if (allOpenInputs.length > 0) {
         // Гонка с таймаутом, чтобы экран не зависал при медленном ответе ИИ.
-        const fallback = new Promise<{ answers: { score: number }[] }>((resolve) =>
-          setTimeout(
-            () => resolve({ answers: allOpenInputs.map((i) => ({ score: i.answer.trim() ? 50 : 0 })) }),
-            15000
-          )
+        const fallback = new Promise<{ ok: boolean; answers: { score: number }[] }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, answers: [] }), 15000)
         )
         const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
+        aiGraded = result.ok
         openGrades = result.answers.map((a) => a.score)
       }
 
@@ -207,47 +207,58 @@ export default function SkillProofPage() {
 
       // 3) Балл за каждый элемент в шкале 0-100.
       //    Объективный вопрос: верно = 100, неверно = 0.
-      //    Открытый/интервью: оценка ИИ (0-100).
+      //    Открытый/интервью: оценка ИИ (0-100) — только если AI-оценка доступна.
       const objectiveItemScores = objectiveQuestions.map((q) =>
         isAnswerCorrect(q, answers[q.id]) ? 100 : 0
       )
 
-      // "Правильных ответов: X из N" — по вопросам теста (открытый зачитывается при >= 60).
+      // "Правильных ответов: X из N" — по объективным вопросам, плюс открытые (>= 60) если ИИ оценил.
       const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
-      const openCorrect = openTestGrades.filter((s) => s >= 60).length
+      const openCorrect = aiGraded ? openTestGrades.filter((s) => s >= 60).length : 0
       const correct = objectiveCorrect + openCorrect
       setCorrectAnswersCount(correct)
 
-      // 4) Итоговый балл = среднее по ВСЕМ элементам, включая открытые ответы и AI-интервью.
-      const allItemScores = [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
+      // 4) Итоговый балл = среднее по учитываемым элементам.
+      //    Открытые ответы и AI-интервью включаются ТОЛЬКО при успешной AI-оценке.
+      const allItemScores = aiGraded
+        ? [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
+        : objectiveItemScores
       const score = allItemScores.length
         ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
         : 0
       setFinalScore(score)
 
-      const passed = specialization ? checkTestPassed(specialization, correct) : false
+      // Проходим по проценту итогового балла (>= 70%). Так порог честный в обоих
+      // режимах: и когда открытые вопросы учитываются, и когда исключены из расчёта.
+      const passed = score >= 70
       const isClean = violationCount === 0
 
       const now = new Date()
       const dateStr = now.toLocaleDateString('ru-RU')
       const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 
-      // Навыки по категориям. Открытые вопросы вносят свой AI-балл, объективные — 0/100.
+      // Навыки по категориям. Открытые вопросы учитываются только при AI-оценке.
       const openScoreByQuestionId = new Map<string, number>()
       openTestQuestions.forEach((q, i) => openScoreByQuestionId.set(q.id, openTestGrades[i] ?? 0))
 
       const skillCategories = [...new Set(questions.map((q) => q.category))]
-      const skills = skillCategories.map((cat) => {
-        const catQuestions = questions.filter((q) => q.category === cat)
-        const total = catQuestions.reduce((sum, q) => {
-          if (q.type === 'open') return sum + (openScoreByQuestionId.get(q.id) ?? 0)
-          return sum + (isAnswerCorrect(q, answers[q.id]) ? 100 : 0)
-        }, 0)
-        return {
-          name: cat,
-          score: catQuestions.length ? Math.round(total / catQuestions.length) : 0,
-        }
-      })
+      const skills = skillCategories
+        .map((cat) => {
+          // Без AI-оценки открытые вопросы исключаем из расчёта категории.
+          const catQuestions = questions.filter(
+            (q) => q.category === cat && (aiGraded || q.type !== 'open')
+          )
+          if (catQuestions.length === 0) return null
+          const total = catQuestions.reduce((sum, q) => {
+            if (q.type === 'open') return sum + (openScoreByQuestionId.get(q.id) ?? 0)
+            return sum + (isAnswerCorrect(q, answers[q.id]) ? 100 : 0)
+          }, 0)
+          return {
+            name: cat,
+            score: Math.round(total / catQuestions.length),
+          }
+        })
+        .filter((s): s is { name: string; score: number } => s !== null)
 
       // Save certificate to localStorage if passed
       if (passed) {
@@ -376,7 +387,7 @@ export default function SkillProofPage() {
     setStage('preparation')
   }
 
-  // Disclaimer "Начать тестирование" handler: first check the server whether
+  // Disclaimer "Начать тес��ирование" handler: first check the server whether
   // this email has already completed the test. This is the authoritative gate
   // against repeat attempts and can't be bypassed with a VPN.
   const handleBeginAssessment = async () => {

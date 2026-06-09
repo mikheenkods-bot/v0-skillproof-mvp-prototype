@@ -21,7 +21,6 @@ import {
   getRandomQuestions,
   isAnswerCorrect,
   getAIQuestionsForSpecialization,
-  checkTestPassed,
   type SpecializationType 
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
@@ -145,16 +144,16 @@ function SkillProofContent() {
         answer: interviewAnswers[i] ?? '',
       }))
 
+      // ГИБРИДНЫЙ РЕЖИМ: открытые ответы и интервью учитываются только при успешной AI-оценке.
       const allOpenInputs = [...openTestInputs, ...interviewInputs]
       let openGrades: number[] = []
+      let aiGraded = false
       if (allOpenInputs.length > 0) {
-        const fallback = new Promise<{ answers: { score: number }[] }>((resolve) =>
-          setTimeout(
-            () => resolve({ answers: allOpenInputs.map((i) => ({ score: i.answer.trim() ? 50 : 0 })) }),
-            15000
-          )
+        const fallback = new Promise<{ ok: boolean; answers: { score: number }[] }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, answers: [] }), 15000)
         )
         const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
+        aiGraded = result.ok
         openGrades = result.answers.map((a) => a.score)
       }
       if (cancelled) return
@@ -166,17 +165,20 @@ function SkillProofContent() {
         isAnswerCorrect(q, answers[q.id]) ? 100 : 0
       )
       const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
-      const openCorrect = openTestGrades.filter((s) => s >= 60).length
+      const openCorrect = aiGraded ? openTestGrades.filter((s) => s >= 60).length : 0
       const correct = objectiveCorrect + openCorrect
       setCorrectAnswersCount(correct)
 
-      const allItemScores = [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
+      const allItemScores = aiGraded
+        ? [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
+        : objectiveItemScores
       const score = allItemScores.length
         ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
         : 0
       setFinalScore(score)
 
-      const passed = specialization ? checkTestPassed(specialization, correct) : false
+      // Проходим по проценту итогового балла (>= 70%) — честно в обоих режимах.
+      const passed = score >= 70
 
       setStage('result')
       if (passed) {
@@ -706,7 +708,7 @@ function SkillProofContent() {
                     </div>
                   </CardContent>
                 </Card>
-              ) : specialization && checkTestPassed(specialization, correctAnswersCount) ? (
+              ) : finalScore >= 70 ? (
                 <>
                   <CertificateCard
                     candidateName="Кандидат"

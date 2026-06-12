@@ -12,6 +12,7 @@ export const testResults = pgTable('test_results', {
   passed: boolean('passed').notNull(),
   isClean: boolean('is_clean').notNull().default(true),
   violations: integer('violations').notNull().default(0),
+  integrityScore: integer('integrity_score').notNull().default(0),
   skills: jsonb('skills').notNull().default([]),
   proctoringLog: jsonb('proctoring_log').notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

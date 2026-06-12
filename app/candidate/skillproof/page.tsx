@@ -16,15 +16,15 @@ import { useProctoringMedia } from '@/hooks/use-proctoring-media'
 import { 
   specializations, 
   getRandomQuestions,
-  getAIQuestionsForSpecialization,
   isAnswerCorrect,
+  checkTestPassed,
+  TEST_CONFIG,
   type SpecializationType,
   type Question
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
 import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
 import { sendResultEmail } from '@/app/actions/send-result-email'
-import { gradeOpenAnswers, type OpenAnswerInput } from '@/app/actions/grade-open-answers'
 import {
   Shield,
   Building2,
@@ -34,10 +34,7 @@ import {
   CheckCircle2,
   ChevronRight,
   AlertTriangle,
-  MessageSquare,
-  Send,
   Loader2,
-  Brain,
   XCircle,
   ArrowLeft,
   ArrowRight,
@@ -47,7 +44,7 @@ import {
   Mail
 } from 'lucide-react'
 
-type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -65,11 +62,10 @@ export default function SkillProofPage() {
   const [answers, setAnswers] = useState<Record<string, number | string | number[]>>({})
   const [showConsentModal, setShowConsentModal] = useState(false)
   const [preparationChecks, setPreparationChecks] = useState<Record<string, boolean>>({})
-  const [timeRemaining, setTimeRemaining] = useState(30 * 60)
+  // PDn consent (152-ФЗ) — обязательно перед началом тестирования.
+  const [pdnConsent, setPdnConsent] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState(TEST_CONFIG.DURATION_MINUTES * 60)
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now())
-  const [currentInterviewQuestion, setCurrentInterviewQuestion] = useState(0)
-  const [interviewAnswer, setInterviewAnswer] = useState('')
-  const [interviewAnswers, setInterviewAnswers] = useState<string[]>([])
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [finalScore, setFinalScore] = useState(0)
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
@@ -84,12 +80,10 @@ export default function SkillProofPage() {
   // Server-side repeat-attempt gate (by email — VPN-proof, unlike an IP check).
   const [checkingCompletion, setCheckingCompletion] = useState(false)
   const [existingCompletion, setExistingCompletion] = useState<ExistingCompletion | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Questions are randomized per attempt (set in handleStartTest), so each
   // candidate and each retry gets a different set and order of questions.
   const [questions, setQuestions] = useState<Question[]>([])
-  const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
   const specConfig = specialization ? specializations[specialization] : null
 
   // New proctoring v2 system
@@ -123,21 +117,34 @@ export default function SkillProofPage() {
     }
   })
 
+  // Durable timer: храним АБСОЛЮТНЫЙ дедлайн (мс) в localStorage, а не «оставшиеся
+  // секунды». Перезагрузка (F5) не сбрасывает таймер — оставшееся время всегда
+  // вычисляется от дедлайна. По истечении — переход к анализу.
+  const TIMER_KEY = 'skillproof_deadline'
+
   // Timer effect
   useEffect(() => {
-    if (stage !== 'testing' && stage !== 'ai-interview') return
+    if (stage !== 'testing') return
     if (proctoring.isTerminated) return
 
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          setStage('analyzing')
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    // Берём дедлайн из localStorage; если его нет (первый вход в testing) — создаём.
+    let deadline = Number(localStorage.getItem(TIMER_KEY) || 0)
+    if (!deadline || Number.isNaN(deadline) || deadline < Date.now()) {
+      deadline = Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000
+      localStorage.setItem(TIMER_KEY, String(deadline))
+    }
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000))
+      setTimeRemaining(remaining)
+      if (remaining <= 0) {
+        clearInterval(timer)
+        localStorage.removeItem(TIMER_KEY)
+        setStage('analyzing')
+      }
+    }
+    tick() // мгновенно показать актуальное время после перезагрузки
+    const timer = setInterval(tick, 1000)
 
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
@@ -169,94 +176,43 @@ export default function SkillProofPage() {
     const finalize = async () => {
       clearInterval(interval)
       setAnalysisProgress(100)
+      // Таймер больше не нужен — очищаем сохранённый дедлайн.
+      localStorage.removeItem(TIMER_KEY)
 
-      // 1) Объективные вопросы (выбор/множественный выбор/числовой) — точная проверка.
-      //    Открытые вопросы теста оцениваются ИИ по смыслу (ниже).
-      const openTestQuestions = questions.filter((q) => q.type === 'open')
-      const objectiveQuestions = questions.filter((q) => q.type !== 'open')
-
-      // 2) Готовим список открытых ответов теста + ответов AI-интервью для AI-оценки.
-      const openTestInputs: OpenAnswerInput[] = openTestQuestions.map((q) => ({
-        question: q.text,
-        answer: String(answers[q.id] ?? ''),
-        reference: q.sampleAnswer,
-      }))
-      const interviewInputs: OpenAnswerInput[] = aiQuestions.map((q, i) => ({
-        question: q.text,
-        answer: interviewAnswers[i] ?? '',
-      }))
-
-      // Один вызов на всё — дешевле и быстрее. Порядок сохраняется.
-      // ГИБРИДНЫЙ РЕЖИМ: если AI-оценка недоступна (нет карты/сбой шлюза),
-      // открытые ответы и интервью НЕ влияют на балл — считаем только вопросы с вариантами.
-      const allOpenInputs = [...openTestInputs, ...interviewInputs]
-      let openGrades: number[] = []
-      let aiGraded = false
-      if (allOpenInputs.length > 0) {
-        // Гонка с таймаутом, чтобы экран не зависал при медленном ответе ИИ.
-        const fallback = new Promise<{ ok: boolean; answers: { score: number }[] }>((resolve) =>
-          setTimeout(() => resolve({ ok: false, answers: [] }), 15000)
-        )
-        const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
-        aiGraded = result.ok
-        openGrades = result.answers.map((a) => a.score)
-      }
-
-      const openTestGrades = openGrades.slice(0, openTestInputs.length)
-      const interviewGrades = openGrades.slice(openTestInputs.length)
-
-      // 3) Балл за каждый элемент в шкале 0-100.
-      //    Объективный вопрос: верно = 100, неверно = 0.
-      //    Открытый/интервью: оценка ИИ (0-100) — только если AI-оценка доступна.
-      const objectiveItemScores = objectiveQuestions.map((q) =>
+      // ДЕТЕРМИНИРОВАННЫЙ ЛОКАЛЬНЫЙ СКОРИНГ — без внешних/платных вызовов.
+      // В тесте только multiple_choice и numeric (см. getRandomQuestions),
+      // каждый вопрос строго верно/неверно (isAnswerCorrect).
+      const itemScores = questions.map((q) =>
         isAnswerCorrect(q, answers[q.id]) ? 100 : 0
       )
-
-      // "Правильных ответов: X из N" — по объективным вопросам, плюс открытые (>= 60) если ИИ оценил.
-      const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
-      const openCorrect = aiGraded ? openTestGrades.filter((s) => s >= 60).length : 0
-      const correct = objectiveCorrect + openCorrect
+      const correct = itemScores.filter((s) => s === 100).length
       setCorrectAnswersCount(correct)
 
-      // 4) Итоговый балл = среднее по учитываемым элементам.
-      //    Открытые ответы и AI-интервью включаются ТОЛЬКО при успешной AI-оценке.
-      const allItemScores = aiGraded
-        ? [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
-        : objectiveItemScores
-      const score = allItemScores.length
-        ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
+      // Итоговый балл = доля правильных из общего числа вопросов.
+      const score = questions.length
+        ? Math.round((correct / questions.length) * 100)
         : 0
       setFinalScore(score)
 
-      // Проходим по проценту итогового балла (>= 70%). Так порог честный в обоих
-      // режимах: и когда открытые вопросы учитываются, и когда исключены из расчёта.
-      const passed = score >= 70
+      // Прохождение по канону: нужно PASS_THRESHOLD правильных из QUESTIONS_PER_TEST.
+      const passed = correct >= TEST_CONFIG.PASS_THRESHOLD
       const isClean = violationCount === 0
 
       const now = new Date()
       const dateStr = now.toLocaleDateString('ru-RU')
       const certId = `SKILL-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
 
-      // Навыки по категориям. Открытые вопросы учитываются только при AI-оценке.
-      const openScoreByQuestionId = new Map<string, number>()
-      openTestQuestions.forEach((q, i) => openScoreByQuestionId.set(q.id, openTestGrades[i] ?? 0))
-
+      // Навыки по категориям — точная локальная проверка каждого вопроса.
       const skillCategories = [...new Set(questions.map((q) => q.category))]
       const skills = skillCategories
         .map((cat) => {
-          // Без AI-оценки открытые вопросы исключаем из расчёта категории.
-          const catQuestions = questions.filter(
-            (q) => q.category === cat && (aiGraded || q.type !== 'open')
-          )
+          const catQuestions = questions.filter((q) => q.category === cat)
           if (catQuestions.length === 0) return null
-          const total = catQuestions.reduce((sum, q) => {
-            if (q.type === 'open') return sum + (openScoreByQuestionId.get(q.id) ?? 0)
-            return sum + (isAnswerCorrect(q, answers[q.id]) ? 100 : 0)
-          }, 0)
-          return {
-            name: cat,
-            score: Math.round(total / catQuestions.length),
-          }
+          const total = catQuestions.reduce(
+            (sum, q) => sum + (isAnswerCorrect(q, answers[q.id]) ? 100 : 0),
+            0
+          )
+          return { name: cat, score: Math.round(total / catQuestions.length) }
         })
         .filter((s): s is { name: string; score: number } => s !== null)
 
@@ -291,7 +247,15 @@ export default function SkillProofPage() {
 
       setCertificateId(certId)
 
+      const proctoringLog = violationsList.map((v) => ({
+        type: (v as { eventType?: string; type?: string }).eventType ?? (v as { type?: string }).type ?? 'violation',
+        message: (v as { description?: string; message?: string }).description ?? (v as { message?: string }).message ?? '',
+        timestamp: (v as { timestamp?: number }).timestamp ?? Date.now(),
+      }))
+
       // Persist result to the database (every attempt, pass or fail).
+      // Прокторинг-лог и integrity-score сохраняются в БД вместе с результатом —
+      // переживают перезапуск сервера (durable), в отличие от in-memory Map.
       void saveTestResult({
         certificateId: certId,
         candidateName: candidateName.trim() || null,
@@ -303,11 +267,9 @@ export default function SkillProofPage() {
         passed,
         isClean,
         violations: violationCount,
+        integrityScore: proctoring.integrityScore ?? 0,
         skills,
-        proctoringLog: violationsList.map((v) => ({
-          type: (v as { type?: string }).type ?? 'violation',
-          message: (v as { message?: string }).message ?? '',
-        })),
+        proctoringLog,
       })
 
       // Email the candidate a copy of their result (fire-and-forget).
@@ -331,7 +293,6 @@ export default function SkillProofPage() {
     }
 
     // Запускаем оценку после короткой задержки (для визуала прогресса).
-    // finalize сам устойчив к сбоям ИИ (fail-open + таймаут), поэтому не зависнет.
     const timeout = setTimeout(() => {
       void finalize()
     }, 600)
@@ -416,10 +377,15 @@ export default function SkillProofPage() {
     // Use the explicitly passed specialization to avoid relying on the
     // async state update from setSpecialization (which would still be null here).
     const activeSpec = spec ?? specialization
-    // Generate a fresh randomized set of questions for this attempt.
+    // Generate a fresh randomized set of questions for this attempt (канон 7+3).
     if (activeSpec) {
-      setQuestions(getRandomQuestions(activeSpec, 10))
+      setQuestions(getRandomQuestions(activeSpec))
     }
+    // Новый дедлайн таймера для этой попытки (durable, переживает F5).
+    localStorage.setItem(
+      TIMER_KEY,
+      String(Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000)
+    )
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
     proctoring.startQuestionTimer() // Start timing for first question
@@ -442,9 +408,8 @@ export default function SkillProofPage() {
     setEmailStatus('idle')
     setShowExplanation(false)
     setIsAnswerLocked(false)
-    setTimeRemaining(30 * 60)
-    setCurrentInterviewQuestion(0)
-    setInterviewAnswers([])
+    setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
+    localStorage.removeItem(TIMER_KEY)
     setAnalysisProgress(0)
   }
 
@@ -461,22 +426,10 @@ export default function SkillProofPage() {
       setIsAnswerLocked(true)
       setShowExplanation(true)
     } else {
-      // multiple_select / numeric / open: записываем ответ без блокировки,
+      // numeric: записываем ответ без блокировки,
       // кандидат подтверждает кнопкой «Следующий вопрос»
       setAnswers(prev => ({ ...prev, [questionId]: answer }))
     }
-  }
-
-  // Переключение варианта для вопросов с множественным выбором
-  const handleMultiSelectToggle = (questionId: string, index: number) => {
-    if (isAnswerLocked) return
-    setAnswers(prev => {
-      const current = Array.isArray(prev[questionId]) ? (prev[questionId] as number[]) : []
-      const next = current.includes(index)
-        ? current.filter(i => i !== index)
-        : [...current, index]
-      return { ...prev, [questionId]: next }
-    })
   }
 
   const handleNextQuestion = () => {
@@ -488,37 +441,10 @@ export default function SkillProofPage() {
       setCurrentQuestion(prev => prev + 1)
       setQuestionStartTime(Date.now())
     } else {
-      setStage('ai-interview')
-    }
-  }
-
-  const handleInterviewSubmit = () => {
-    if (!interviewAnswer.trim()) return
-    
-    // Record text for analysis before submitting
-    proctoring.recordTextChange(interviewAnswer)
-    
-    setInterviewAnswers(prev => [...prev, interviewAnswer])
-    setInterviewAnswer('')
-    proctoring.startQuestionTimer() // Reset for next question
-    
-    if (currentInterviewQuestion < aiQuestions.length - 1) {
-      setCurrentInterviewQuestion(prev => prev + 1)
-    } else {
+      // Открытых вопросов и AI-интервью больше нет — сразу к анализу.
       proctoring.stopSession()
       setStage('analyzing')
     }
-  }
-
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInterviewAnswer(e.target.value)
-    // Record text change for copy-paste detection
-    proctoring.recordTextChange(e.target.value)
-  }
-
-  // Handle keydown for typing pattern analysis
-  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    proctoring.recordKeystroke(e.key)
   }
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
@@ -650,13 +576,41 @@ export default function SkillProofPage() {
                       autoComplete="email"
                     />
                   </div>
+
+                  {/* Согласие на обработку ПДн (152-ФЗ) — обязательно */}
+                  <label
+                    htmlFor="pdn-consent"
+                    className="flex items-start gap-3 rounded-xl border border-border p-4 cursor-pointer hover:border-primary/50 transition-colors"
+                  >
+                    <input
+                      id="pdn-consent"
+                      type="checkbox"
+                      checked={pdnConsent}
+                      onChange={(e) => setPdnConsent(e.target.checked)}
+                      className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+                    />
+                    <span className="text-sm text-muted-foreground leading-relaxed">
+                      Я даю согласие на обработку моих персональных данных и передачу
+                      результата тестирования работодателю в соответствии с{' '}
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline underline-offset-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Политикой обработки персональных данных
+                      </a>{' '}
+                      (152-ФЗ).
+                    </span>
+                  </label>
                 </div>
               </div>
 
               <Button
                 size="lg"
                 className="w-full"
-                disabled={checkingCompletion || !candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
+                disabled={checkingCompletion || !pdnConsent || !candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
                 onClick={handleBeginAssessment}
               >
                 {checkingCompletion ? (
@@ -829,7 +783,7 @@ export default function SkillProofPage() {
               <div className="text-center mb-8">
                 <h1 className="text-3xl font-bold mb-2">Тестирование навыка</h1>
                 <p className="text-muted-foreground">
-                  Для прохождения необходимо ответить правильно на 4 из 5 вопросов.
+                  Для прохождения необходимо ответить правильно на {TEST_CONFIG.PASS_THRESHOLD} из {TEST_CONFIG.QUESTIONS_PER_TEST} вопросов.
                 </p>
               </div>
 
@@ -859,11 +813,11 @@ export default function SkillProofPage() {
                   <div className="flex items-center gap-4 text-sm">
                     <span className="flex items-center gap-1 text-muted-foreground">
                       <Clock className="h-4 w-4" />
-                      30 минут
+                      {TEST_CONFIG.DURATION_MINUTES} минут
                     </span>
                     <span className="flex items-center gap-1 text-muted-foreground">
                       <CheckCircle2 className="h-4 w-4" />
-                      5 вопросов
+                      {TEST_CONFIG.QUESTIONS_PER_TEST} вопросов
                     </span>
                   </div>
                 </motion.button>
@@ -991,37 +945,7 @@ export default function SkillProofPage() {
                       </motion.div>
                     )}
                   </div>
-                ) : questions[currentQuestion].type === 'multiple_select' ? (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Выберите все верные варианты
-                    </p>
-                    {questions[currentQuestion].options?.map((option, index) => {
-                      const selected = Array.isArray(answers[questions[currentQuestion].id])
-                        ? (answers[questions[currentQuestion].id] as number[])
-                        : []
-                      const isSelected = selected.includes(index)
-                      return (
-                        <button
-                          key={index}
-                          onClick={() => handleMultiSelectToggle(questions[currentQuestion].id, index)}
-                          className={cn(
-                            "w-full p-4 rounded-xl border-2 text-left transition-all flex items-center gap-3",
-                            isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                          )}
-                        >
-                          <div className={cn(
-                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2",
-                            isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground"
-                          )}>
-                            {isSelected && <CheckCircle2 className="h-4 w-4" />}
-                          </div>
-                          <span>{option}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : questions[currentQuestion].type === 'numeric' ? (
+                ) : (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">
                       Введите числовой ответ (только цифры, без пробелов)
@@ -1032,16 +956,13 @@ export default function SkillProofPage() {
                       placeholder="Например: 22000"
                       className="max-w-xs text-lg"
                       value={(answers[questions[currentQuestion].id] as string) ?? ''}
-                      onChange={(e) => handleAnswer(questions[currentQuestion].id, e.target.value)}
+                      onChange={(e) => {
+                        // Принимаем только цифры (числовой ответ).
+                        const digitsOnly = e.target.value.replace(/[^0-9]/g, '')
+                        handleAnswer(questions[currentQuestion].id, digitsOnly)
+                      }}
                     />
                   </div>
-                ) : (
-                  <Textarea
-                    placeholder="Введите развёрнутый ответ..."
-                    className="min-h-[150px] resize-none"
-                    value={answers[questions[currentQuestion].id] as string || ''}
-                    onChange={(e) => handleAnswer(questions[currentQuestion].id, e.target.value)}
-                  />
                 )}
 
                 <div className="mt-8 flex justify-end">
@@ -1056,103 +977,8 @@ export default function SkillProofPage() {
                       return false
                     })()}
                   >
-                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
+                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Завершить тест'}
                     <ChevronRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* AI Interview Stage */}
-          {stage === 'ai-interview' && !proctoring.isTerminated && aiQuestions.length > 0 && (
-            <motion.div
-              key="ai-interview"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="max-w-3xl mx-auto"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
-                    <Brain className="h-4 w-4" />
-                    AI-интервью
-                  </div>
-                  {specConfig && (
-                    <span className="text-sm text-muted-foreground">
-                      {specConfig.name}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted font-mono text-lg font-bold">
-                  <Clock className="h-5 w-5" />
-                  {formatTime(timeRemaining)}
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <Progress value={((currentInterviewQuestion + 1) / aiQuestions.length) * 100} />
-                <p className="text-sm text-muted-foreground mt-2">
-                  Вопрос {currentInterviewQuestion + 1} из {aiQuestions.length}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-card overflow-hidden">
-                <div className="p-6 border-b border-border bg-muted/30">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20">
-                      <MessageSquare className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium mb-1">AI-интервьюер</p>
-                      <p className="text-foreground">
-                        {aiQuestions[currentInterviewQuestion]?.text}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-6">
-                  <Textarea
-                    ref={textareaRef}
-                    placeholder="Введите ваш ответ..."
-                    className="min-h-[120px] resize-none mb-4"
-                    value={interviewAnswer}
-                    onChange={handleTextareaChange}
-                    onKeyDown={handleTextareaKeyDown}
-                  />
-
-                  {/* Typing metrics display */}
-                  {proctoring.typingMetrics && proctoring.typingMetrics.currentWPM > 0 && (
-                    <div className="mb-4 p-3 rounded-lg bg-muted/50 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Скорость печати:</span>
-                        <span className={cn(
-                          "font-medium",
-                          proctoring.typingMetrics.currentWPM > 120 ? "text-destructive" : 
-                          proctoring.typingMetrics.currentWPM > 80 ? "text-warning" : "text-foreground"
-                        )}>
-                          {proctoring.typingMetrics.currentWPM} сл/мин
-                        </span>
-                      </div>
-                      {proctoring.typingMetrics.copyPasteDetected && (
-                        <p className="mt-1 text-xs text-destructive">
-                          Обнаружена вставка текста
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <Button
-                    className="w-full"
-                    onClick={handleInterviewSubmit}
-                    disabled={!interviewAnswer.trim()}
-                  >
-                    <Send className="mr-2 h-4 w-4" />
-                    {currentInterviewQuestion < aiQuestions.length - 1 
-                      ? 'Отправить и продолжить' 
-                      : 'Завершить интервью'}
                   </Button>
                 </div>
               </div>

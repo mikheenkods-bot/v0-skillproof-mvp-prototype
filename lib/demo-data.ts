@@ -64,6 +64,24 @@ export interface AIInterviewQuestion {
 
 export type SpecializationType = 'marketing' | 'accounting' | 'accountant' | 'account_manager'
 
+// ============================================================
+// КАНОН ТЕСТА SkillProof — единый источник правды
+// Везде (логика, прогресс, тексты UI, строка результата) должны
+// использоваться ИМЕННО эти числа, без хардкода 5/4/10/7 по месту.
+// ============================================================
+export const TEST_CONFIG = {
+  /** Всего вопросов в тесте */
+  QUESTIONS_PER_TEST: 10,
+  /** Сколько из них вопросы с одиночным выбором (multiple_choice) */
+  MCQ_COUNT: 7,
+  /** Сколько из них числовые задачки на расчёт (numeric) */
+  TASK_COUNT: 3,
+  /** Сколько правильных нужно для прохождения (из QUESTIONS_PER_TEST) */
+  PASS_THRESHOLD: 7,
+  /** Длительность теста в минутах */
+  DURATION_MINUTES: 30,
+} as const
+
 export interface Specialization {
   id: SpecializationType
   name: string
@@ -341,7 +359,7 @@ export const marketingQuestions: Question[] = [
   },
   {
     id: 'm8',
-    text: 'Что показывает метрика конверсии из лида в сделку?',
+    text: 'Что показывает мет��ика конверсии из лида в сделку?',
     type: 'multiple_choice',
     options: [
       'Сколько денег потрачено на рекламу',
@@ -901,7 +919,7 @@ export const accountantQuestions: Question[] = [
   },
   {
     id: 'acc_kb29',
-    text: 'Что такое НДС к уплате в бюджет и как он рассчитывается у плательщика на ОСНО?',
+    text: 'Что такое НДС к уплате в бюджет и как он рассчитывается у плательщика на ��СНО?',
     type: 'open',
     keywords: ['уплате', 'исчисленный', 'реализации', 'исходящий', 'принятый', 'вычету', 'входной', 'приобретенным'],
     sampleAnswer: 'НДС к уплате = исчисленный НДС с реализации (исходящий) − НДС, принятый к вычету (входной по приобретённым товарам, работам, услугам) + восстановленный НДС. Если вычеты превышают исчисленный налог, разница подлежит возмещению из бюджета.',
@@ -1180,7 +1198,7 @@ export const accountantQuestions: Question[] = [
   },
   {
     id: 'acc_kb50',
-    text: 'Какие объекты налогообложения предусмотрены при УСН?',
+    text: 'Как��е объекты налогообложения предусмотрены при УСН?',
     type: 'multiple_choice',
     options: [
       '«Доходы» и «Доходы минус расходы»',
@@ -1299,7 +1317,7 @@ export const accountantQuestions: Question[] = [
     text: 'Что такое лимит остатка наличных в кассе и кто вправе его не устанавливать?',
     type: 'open',
     keywords: ['лимит', 'остатка', 'кассы', 'максимальная', 'сумма', 'наличных', 'которую', 'организация'],
-    sampleAnswer: 'Лимит остатка кассы — максимальная сумма наличных, которую организация вправе хранить в кассе на конец рабочего дня; сверхлимитные деньги сдаются в банк. Субъекты малого предпринимательства и ИП вправе лимит не устанавливать (Указание Банка России № 3210-У).',
+    sampleAnswer: 'Лимит остатка кассы — максимальная сумма наличных, которую организация вправе хранить в кассе на конец рабочего дня; сверхлимитные день��и сдаются в банк. Субъекты малого предпринимательства и ИП вправе лимит не устанавливать (Указание Банка России № 3210-У).',
     explanation: 'Порядок ведения кассовых операций установлен Указанием Банка России № 3210-У.',
     complexity: 'medium',
     category: 'Первичка, касса, ЭДО, ЕНС'
@@ -1359,6 +1377,61 @@ export const accountantQuestions: Question[] = [
     complexity: 'medium',
     category: 'Учёт активов (ОС, НМА, запасы, аренда)'
   },
+  // --- Дополнительные числовые задачки (расчёты) для канона теста ---
+  {
+    id: 'acc_num1',
+    text: 'Стоимость товара без НДС составляет 100 000 руб. Рассчитайте сумму НДС по ставке 22% (в рублях).',
+    type: 'numeric',
+    numericAnswer: 22000,
+    explanation: 'НДС = 100 000 × 22% = 22 000 руб.',
+    complexity: 'medium',
+    category: 'НДС'
+  },
+  {
+    id: 'acc_num2',
+    text: 'Сумма с учётом НДС — 244 000 руб., ставка НДС 22%. Определите стоимость без НДС (налоговую базу) в рублях.',
+    type: 'numeric',
+    numericAnswer: 200000,
+    explanation: 'Без НДС = 244 000 / 1,22 = 200 000 руб. НДС в сумме = 44 000 руб.',
+    complexity: 'hard',
+    category: 'НДС'
+  },
+  {
+    id: 'acc_num3',
+    text: 'Начислена зарплата 50 000 руб. Рассчитайте сумму страховых взносов по единому тарифу 30% (в пределах базы) в рублях.',
+    type: 'numeric',
+    numericAnswer: 15000,
+    explanation: 'Взносы = 50 000 × 30% = 15 000 руб.',
+    complexity: 'medium',
+    category: 'Страховые взносы и зарплата'
+  },
+  {
+    id: 'acc_num4',
+    text: 'Начислена зарплата работнику 80 000 руб. Рассчитайте сумму НДФЛ к удержанию по ставке 13% (без вычетов) в рублях.',
+    type: 'numeric',
+    numericAnswer: 10400,
+    explanation: 'НДФЛ = 80 000 × 13% = 10 400 руб.',
+    complexity: 'medium',
+    category: 'НДФЛ'
+  },
+  {
+    id: 'acc_num5',
+    text: 'Доход ИП на УСН «Доходы» за год — 1 800 000 руб. Рассчитайте налог по ставке 6% (без учёта взносов) в рублях.',
+    type: 'numeric',
+    numericAnswer: 108000,
+    explanation: 'Налог УСН 6% = 1 800 000 × 6% = 108 000 руб.',
+    complexity: 'medium',
+    category: 'УСН и спецрежимы'
+  },
+  {
+    id: 'acc_num6',
+    text: 'Первоначальная стоимость основного средства — 600 000 руб., срок полезного использования — 5 лет. Рассчитайте годовую сумму амортизации линейным способом (в рублях).',
+    type: 'numeric',
+    numericAnswer: 120000,
+    explanation: 'Годовая амортизация = 600 000 / 5 = 120 000 руб. (линейный способ, ФСБУ 6/2020).',
+    complexity: 'medium',
+    category: 'Учёт активов (ОС, НМА, запасы, аренда)'
+  },
 ]
 
 // Перемешивание массива (Fisher–Yates) — для разных вопросов на каждой попытке
@@ -1409,13 +1482,32 @@ function shuffleOptions(question: Question): Question {
   return next
 }
 
-export function getRandomQuestions(spec: SpecializationType, count = 10): Question[] {
+/**
+ * Формирует тест строго по канону TEST_CONFIG:
+ * ровно MCQ_COUNT случайных вопросов с одиночным выбором (multiple_choice)
+ * + ровно TASK_COUNT случайных числовых задачек (numeric).
+ * Открытые вопросы (open) и множественный выбор в тест НЕ попадают.
+ * Варианты ответов перемешиваются, итоговый порядок вопросов тоже.
+ */
+export function getRandomQuestions(
+  spec: SpecializationType,
+  count: number = TEST_CONFIG.QUESTIONS_PER_TEST
+): Question[] {
   const bank = specializations[spec]?.questions || []
-  // Не запрашиваем больше, чем есть в банке.
-  const take = Math.min(count, bank.length)
-  return shuffleArray(bank)
-    .slice(0, take)
-    .map((q) => shuffleOptions(q))
+
+  const mcqPool = bank.filter((q) => q.type === 'multiple_choice')
+  const numericPool = bank.filter((q) => q.type === 'numeric')
+
+  // Доли MCQ/numeric масштабируем под запрошенный count (по умолчанию 7 + 3).
+  const ratio = count / TEST_CONFIG.QUESTIONS_PER_TEST
+  const wantMcq = Math.min(Math.round(TEST_CONFIG.MCQ_COUNT * ratio), mcqPool.length)
+  const wantNumeric = Math.min(Math.round(TEST_CONFIG.TASK_COUNT * ratio), numericPool.length)
+
+  const mcq = shuffleArray(mcqPool).slice(0, wantMcq)
+  const numeric = shuffleArray(numericPool).slice(0, wantNumeric)
+
+  // Смешиваем оба типа и перемешиваем порядок, варианты тоже перемешиваем.
+  return shuffleArray([...mcq, ...numeric]).map((q) => shuffleOptions(q))
 }
 
 /**
@@ -1445,7 +1537,7 @@ function parseNumeric(value: string): number | null {
  *
  * - multiple_choice: индекс выбранного варианта совпадает с correctAnswer
  * - multiple_select: множество выбранных индексов точно совпадает с correctAnswers
- * - numeric: введённое число равно numericAnswer (с допуском 0.5)
+ * - numeric: введённое число равно numericAnswer (с допу��ком 0.5)
  * - open: доля найденных ключевых слов >= keywordThreshold (по умолчанию 0.6)
  */
 export function isAnswerCorrect(question: Question, answer: unknown): boolean {
@@ -1727,6 +1819,6 @@ export function getAIQuestionsForSpecialization(spec: SpecializationType): AIInt
 
 // Хелпер для проверки прохождения теста
 export function checkTestPassed(spec: SpecializationType, correctAnswers: number): boolean {
-  const passingScore = specializations[spec]?.passingScore || 4
+  const passingScore = specializations[spec]?.passingScore || TEST_CONFIG.PASS_THRESHOLD
   return correctAnswers >= passingScore
 }

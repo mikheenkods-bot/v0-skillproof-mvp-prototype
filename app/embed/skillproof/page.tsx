@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'next/navigation'
 import confetti from 'canvas-confetti'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -67,7 +67,6 @@ function SkillProofContent() {
   const [shake, setShake] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Get questions for selected specialization (canon: 7 MCQ + 3 numeric)
   const questions = useMemo(
@@ -186,19 +185,6 @@ function SkillProofContent() {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1)
       setQuestionStartTime(Date.now())
-    } else {
-      setStage('ai-interview')
-    }
-  }
-
-  const handleInterviewSubmit = () => {
-    if (!interviewAnswer.trim()) return
-    
-    setInterviewAnswers(prev => [...prev, interviewAnswer])
-    setInterviewAnswer('')
-    
-    if (currentInterviewQuestion < aiQuestions.length - 1) {
-      setCurrentInterviewQuestion(prev => prev + 1)
     } else {
       proctoring.stopProctoring()
       setStage('analyzing')
@@ -517,87 +503,38 @@ function SkillProofContent() {
                       )}
                     </div>
                   ) : (
-                    <Textarea
-                      ref={textareaRef}
-                      placeholder="Введите ваш ответ..."
-                      value={(answers[questions[currentQuestion].id] as string) || ''}
-                      onChange={(e) => {
-                        handleAnswerSelect(questions[currentQuestion].id, e.target.value)
-                        proctoring.handleTyping(e.target.value)
-                      }}
-                      className="min-h-[120px]"
-                    />
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Введите числовой ответ (только цифры, без пробелов)
+                      </p>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Например: 22000"
+                        className="max-w-xs text-lg"
+                        value={(answers[questions[currentQuestion].id] as string) ?? ''}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/[^0-9]/g, '')
+                          handleAnswerSelect(questions[currentQuestion].id, digitsOnly)
+                          proctoring.handleTyping(digitsOnly)
+                        }}
+                      />
+                    </div>
                   )}
 
                   <Button
                     className="w-full"
-                    disabled={answers[questions[currentQuestion].id] === undefined}
+                    disabled={(() => {
+                      const a = answers[questions[currentQuestion].id]
+                      if (a === undefined || a === null) return true
+                      if (typeof a === 'string') return a.trim() === ''
+                      return false
+                    })()}
                     onClick={handleNextQuestion}
                   >
-                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
+                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Завершить тест'}
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-
-          {/* AI Interview Stage */}
-          {stage === 'ai-interview' && aiQuestions.length > 0 && (
-            <motion.div
-              key="ai-interview"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-            >
-              <ProctoringWidget 
-                isActive={proctoring.isActive}
-                violations={proctoring.violationCount}
-                maxViolations={proctoring.maxViolations}
-              />
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5 text-primary" />
-                    AI-Интервью {specConfig && `- ${specConfig.name}`}
-                  </CardTitle>
-                  <CardDescription>
-                    Вопрос {currentInterviewQuestion + 1} из {aiQuestions.length}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="bg-muted/50 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <MessageSquare className="h-4 w-4 text-primary" />
-                      </div>
-                      <p className="text-sm">{aiQuestions[currentInterviewQuestion]?.text}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {interviewAnswers.map((answer, idx) => (
-                      <div key={idx} className="bg-primary/5 rounded-lg p-3 text-sm">
-                        {answer}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Textarea
-                      placeholder="Введите ваш ответ..."
-                      value={interviewAnswer}
-                      onChange={(e) => {
-                        setInterviewAnswer(e.target.value)
-                        proctoring.handleTyping(e.target.value)
-                      }}
-                      className="flex-1"
-                    />
-                    <Button onClick={handleInterviewSubmit} disabled={!interviewAnswer.trim()}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             </motion.div>

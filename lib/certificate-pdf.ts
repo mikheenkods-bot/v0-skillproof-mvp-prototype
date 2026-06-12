@@ -1,6 +1,3 @@
-import jsPDF from 'jspdf'
-import QRCode from 'qrcode'
-
 export interface CertificatePdfData {
   candidateName: string
   specialization: string
@@ -21,6 +18,8 @@ export function getVerifyUrl(certificateId: string): string {
 
 /** Generates a QR code data URL that encodes the verification link. */
 export async function generateQrDataUrl(certificateId: string): Promise<string> {
+  // Dynamic import keeps `qrcode` out of the server bundle (client-only lib).
+  const QRCode = (await import('qrcode')).default
   const url = getVerifyUrl(certificateId)
   return QRCode.toDataURL(url, {
     width: 240,
@@ -35,6 +34,9 @@ export async function generateQrDataUrl(certificateId: string): Promise<string> 
  */
 export async function downloadCertificatePdf(data: CertificatePdfData): Promise<void> {
   const { candidateName, specialization, score, isClean, date, certificateId } = data
+
+  // Dynamic import keeps `jspdf` (and its worker deps) out of the server bundle.
+  const { default: jsPDF } = await import('jspdf')
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const pageW = doc.internal.pageSize.getWidth()

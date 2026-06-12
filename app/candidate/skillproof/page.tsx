@@ -350,7 +350,7 @@ export default function SkillProofPage() {
     setStage('preparation')
   }
 
-  // Disclaimer "Начать тес��ирование" handler: first check the server whether
+  // Disclaimer "Начать тестирование" handler: first check the server whether
   // this email has already completed the test. This is the authoritative gate
   // against repeat attempts and can't be bypassed with a VPN.
   const handleBeginAssessment = async () => {

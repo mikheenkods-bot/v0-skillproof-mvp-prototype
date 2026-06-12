@@ -300,7 +300,6 @@ export default function CandidateCabinetPage() {
                           isClean={cert.isClean}
                           date={cert.date}
                           certificateId={cert.id}
-                          onDownload={() => alert('Скачивание PDF...')}
                         />
                         <div className="rounded-2xl border border-border bg-card p-6">
                           <h3 className="font-semibold mb-4 flex items-center gap-2">

@@ -20,11 +20,10 @@ import {
   specializations, 
   getRandomQuestions,
   isAnswerCorrect,
-  getAIQuestionsForSpecialization,
+  TEST_CONFIG,
   type SpecializationType 
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
-import { gradeOpenAnswers, type OpenAnswerInput } from '@/app/actions/grade-open-answers'
 import {
   Shield,
   Building2,
@@ -34,8 +33,6 @@ import {
   CheckCircle2,
   ChevronRight,
   AlertTriangle,
-  MessageSquare,
-  Send,
   Loader2,
   Brain,
   XCircle,
@@ -44,7 +41,7 @@ import {
   Info
 } from 'lucide-react'
 
-type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -64,9 +61,6 @@ function SkillProofContent() {
   const [preparationChecks, setPreparationChecks] = useState<Record<string, boolean>>({})
   const [timeRemaining, setTimeRemaining] = useState(30 * 60)
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now())
-  const [currentInterviewQuestion, setCurrentInterviewQuestion] = useState(0)
-  const [interviewAnswer, setInterviewAnswer] = useState('')
-  const [interviewAnswers, setInterviewAnswers] = useState<string[]>([])
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [finalScore, setFinalScore] = useState(0)
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
@@ -75,12 +69,11 @@ function SkillProofContent() {
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Get questions for selected specialization
+  // Get questions for selected specialization (canon: 7 MCQ + 3 numeric)
   const questions = useMemo(
-    () => (specialization ? getRandomQuestions(specialization, 10) : []),
+    () => (specialization ? getRandomQuestions(specialization) : []),
     [specialization]
   )
-  const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
   const specConfig = specialization ? specializations[specialization] : null
 
   // Notify parent window of events
@@ -107,7 +100,7 @@ function SkillProofContent() {
 
   // Timer effect
   useEffect(() => {
-    if (stage !== 'testing' && stage !== 'ai-interview') return
+    if (stage !== 'testing') return
     if (proctoring.isTerminated) return
 
     const timer = setInterval(() => {
@@ -124,61 +117,28 @@ function SkillProofContent() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect - calculate real score (objective + AI-graded open/interview answers)
+  // Analysis effect — fully local, deterministic scoring over exactly 10
+  // questions (7 MCQ + 3 numeric). No open questions, no AI grading.
   useEffect(() => {
     if (stage !== 'analyzing') return
 
     let cancelled = false
 
-    const finalize = async () => {
-      const openTestQuestions = questions.filter((q) => q.type === 'open')
-      const objectiveQuestions = questions.filter((q) => q.type !== 'open')
-
-      const openTestInputs: OpenAnswerInput[] = openTestQuestions.map((q) => ({
-        question: q.text,
-        answer: String(answers[q.id] ?? ''),
-        reference: q.sampleAnswer,
-      }))
-      const interviewInputs: OpenAnswerInput[] = aiQuestions.map((q, i) => ({
-        question: q.text,
-        answer: interviewAnswers[i] ?? '',
-      }))
-
-      // ГИБРИДНЫЙ РЕЖИМ: открытые ответы и интервью учитываются только при успешной AI-оценке.
-      const allOpenInputs = [...openTestInputs, ...interviewInputs]
-      let openGrades: number[] = []
-      let aiGraded = false
-      if (allOpenInputs.length > 0) {
-        const fallback = new Promise<{ ok: boolean; answers: { score: number }[] }>((resolve) =>
-          setTimeout(() => resolve({ ok: false, answers: [] }), 15000)
-        )
-        const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
-        aiGraded = result.ok
-        openGrades = result.answers.map((a) => a.score)
-      }
+    const finalize = () => {
       if (cancelled) return
 
-      const openTestGrades = openGrades.slice(0, openTestInputs.length)
-      const interviewGrades = openGrades.slice(openTestInputs.length)
-
-      const objectiveItemScores = objectiveQuestions.map((q) =>
-        isAnswerCorrect(q, answers[q.id]) ? 100 : 0
+      const correct = questions.reduce(
+        (acc, q) => acc + (isAnswerCorrect(q, answers[q.id]) ? 1 : 0),
+        0
       )
-      const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
-      const openCorrect = aiGraded ? openTestGrades.filter((s) => s >= 60).length : 0
-      const correct = objectiveCorrect + openCorrect
       setCorrectAnswersCount(correct)
 
-      const allItemScores = aiGraded
-        ? [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
-        : objectiveItemScores
-      const score = allItemScores.length
-        ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
-        : 0
+      const total = questions.length || TEST_CONFIG.QUESTIONS_PER_TEST
+      const score = Math.round((correct / total) * 100)
       setFinalScore(score)
 
-      // Проходим по проценту итогового балла (>= 70%) — честно в обоих режимах.
-      const passed = score >= 70
+      // Pass by canon: PASS_THRESHOLD correct out of QUESTIONS_PER_TEST.
+      const passed = correct >= TEST_CONFIG.PASS_THRESHOLD
 
       setStage('result')
       if (passed) {
@@ -191,7 +151,7 @@ function SkillProofContent() {
       setAnalysisProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
-          void finalize()
+          finalize()
           return 100
         }
         return prev + 2
@@ -202,7 +162,7 @@ function SkillProofContent() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [stage, notifyParent, answers, questions, aiQuestions, interviewAnswers, specialization])
+  }, [stage, notifyParent, answers, questions])
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
 

@@ -18,6 +18,67 @@ export async function saveTestResult(result: NewTestResult) {
   }
 }
 
+export interface CertificateVerification {
+  valid: boolean
+  certificateId: string | null
+  candidateName: string | null
+  specialization: string | null
+  score: number | null
+  passed: boolean | null
+  isClean: boolean | null
+  integrityScore: number | null
+  issuedAt: string | null
+}
+
+/**
+ * Public certificate verification by certificateId. Returns only the
+ * non-sensitive fields needed to confirm a certificate is genuine —
+ * deliberately omits email and the detailed proctoring log to avoid
+ * leaking personal data on a public /verify page.
+ */
+export async function getCertificateById(certificateId: string): Promise<CertificateVerification> {
+  const id = certificateId.trim()
+  const invalid: CertificateVerification = {
+    valid: false,
+    certificateId: null,
+    candidateName: null,
+    specialization: null,
+    score: null,
+    passed: null,
+    isClean: null,
+    integrityScore: null,
+    issuedAt: null,
+  }
+
+  if (!id) return invalid
+
+  try {
+    const [row] = await db
+      .select()
+      .from(testResults)
+      .where(eq(testResults.certificateId, id))
+      .limit(1)
+
+    // A certificate is only "valid" if it exists AND the candidate passed.
+    if (!row || !row.passed) return invalid
+
+    return {
+      valid: true,
+      certificateId: row.certificateId,
+      candidateName: row.candidateName,
+      specialization: row.specialization,
+      score: row.score,
+      passed: row.passed,
+      isClean: row.isClean,
+      integrityScore: row.integrityScore ?? null,
+      issuedAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+    }
+  } catch (error) {
+    console.error('[v0] Failed to verify certificate:', error)
+    return invalid
+  }
+}
+
 export interface ExistingCompletion {
   completed: boolean
   attempts: number

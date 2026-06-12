@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import confetti from 'canvas-confetti'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,7 +42,8 @@ import {
   Info,
   Camera,
   ShieldCheck,
-  Mail
+  Mail,
+  Award
 } from 'lucide-react'
 
 type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'analyzing' | 'result'
@@ -1068,11 +1070,36 @@ export default function SkillProofPage() {
                     </div>
                     <Progress value={finalScore} className="h-2 mb-4" />
                     <div className="text-sm text-muted-foreground">
-                      Правильных ответов: {correctAnswersCount} из {questions.length}
+                      Правильных ответов: {correctAnswersCount} из {TEST_CONFIG.QUESTIONS_PER_TEST}
                       {' · '}
                       Специализация: {specConfig?.name || 'Бухгалтер'}
                     </div>
                   </div>
+
+                  {/* Certificate CTA — shown when the candidate passed cleanly */}
+                  {correctAnswersCount >= TEST_CONFIG.PASS_THRESHOLD && certificateId && (
+                    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 mb-4 text-left flex items-start gap-3">
+                      <Award className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-medium">Сертификат готов</p>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Поздравляем! Вы получили верифицированный сертификат SkillProof.
+                          Посмотреть его, скачать PDF или проверить подлинность можно
+                          в личном кабинете.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button asChild size="sm">
+                            <Link href="/candidate/cabinet">Посмотреть сертификат</Link>
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/verify/${certificateId}`} target="_blank">
+                              Проверить подлинность
+                            </Link>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Result fixed / DB confirmation */}
                   <div className="rounded-xl bg-muted p-4 mb-4 text-left flex items-start gap-3">

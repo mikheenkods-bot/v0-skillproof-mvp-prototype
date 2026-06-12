@@ -1,9 +1,11 @@
 "use client"
 
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Shield, Award, CheckCircle2, QrCode, Download, ExternalLink } from 'lucide-react'
+import { Shield, Award, CheckCircle2, Download, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { downloadCertificatePdf, generateQrDataUrl, getVerifyUrl } from '@/lib/certificate-pdf'
 
 interface CertificateCardProps {
   candidateName: string
@@ -24,6 +26,34 @@ export function CertificateCard({
   certificateId,
   onDownload
 }: CertificateCardProps) {
+  const [qrDataUrl, setQrDataUrl] = useState<string>('')
+  const [downloading, setDownloading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    generateQrDataUrl(certificateId)
+      .then((url) => {
+        if (active) setQrDataUrl(url)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [certificateId])
+
+  const handleDownload = async () => {
+    if (onDownload) {
+      onDownload()
+      return
+    }
+    setDownloading(true)
+    try {
+      await downloadCertificatePdf({ candidateName, specialization, score, isClean, date, certificateId })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -114,11 +144,23 @@ export function CertificateCard({
         <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-card">
-              <QrCode className="h-8 w-8 text-muted-foreground" />
+              {qrDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={qrDataUrl || "/placeholder.svg"}
+                  alt={`QR-код для проверки сертификата ${certificateId}`}
+                  className="h-12 w-12"
+                />
+              ) : (
+                <div className="h-12 w-12 animate-pulse rounded bg-muted" />
+              )}
             </div>
             <div className="text-sm">
               <p className="text-muted-foreground">ID сертификата</p>
               <p className="font-mono font-medium">{certificateId}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Сканируйте QR для проверки
+              </p>
             </div>
           </div>
           <div className="text-right text-sm">
@@ -137,12 +179,15 @@ export function CertificateCard({
 
       {/* Footer */}
       <div className="relative p-4 border-t border-border bg-muted/30 flex gap-3">
-        <Button variant="outline" className="flex-1" onClick={onDownload}>
+        <Button variant="outline" className="flex-1" onClick={handleDownload} disabled={downloading}>
           <Download className="mr-2 h-4 w-4" />
-          Скачать PDF
+          {downloading ? 'Готовим PDF…' : 'Скачать PDF'}
         </Button>
-        <Button variant="outline" size="icon">
-          <ExternalLink className="h-4 w-4" />
+        <Button variant="outline" size="icon" asChild title="Открыть страницу проверки">
+          <a href={getVerifyUrl(certificateId)} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-4 w-4" />
+            <span className="sr-only">Открыть страницу проверки сертификата</span>
+          </a>
         </Button>
       </div>
     </motion.div>

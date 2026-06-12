@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // jspdf/qrcode are client-only libraries whose Node builds reference a
+  // dynamic worker that the bundler can't resolve during the SSR pass.
+  // Keeping them external means they're required at runtime instead of bundled.
+  serverExternalPackages: ['jspdf', 'qrcode'],
   typescript: {
     ignoreBuildErrors: true,
   },

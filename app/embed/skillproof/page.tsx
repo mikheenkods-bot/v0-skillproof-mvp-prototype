@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'next/navigation'
 import confetti from 'canvas-confetti'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -20,12 +20,10 @@ import {
   specializations, 
   getRandomQuestions,
   isAnswerCorrect,
-  getAIQuestionsForSpecialization,
-  checkTestPassed,
+  TEST_CONFIG,
   type SpecializationType 
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
-import { gradeOpenAnswers, type OpenAnswerInput } from '@/app/actions/grade-open-answers'
 import {
   Shield,
   Building2,
@@ -35,8 +33,6 @@ import {
   CheckCircle2,
   ChevronRight,
   AlertTriangle,
-  MessageSquare,
-  Send,
   Loader2,
   Brain,
   XCircle,
@@ -45,7 +41,7 @@ import {
   Info
 } from 'lucide-react'
 
-type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'ai-interview' | 'analyzing' | 'result'
+type Stage = 'preparation' | 'identity-verification' | 'specialization' | 'testing' | 'analyzing' | 'result'
 
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
@@ -65,23 +61,18 @@ function SkillProofContent() {
   const [preparationChecks, setPreparationChecks] = useState<Record<string, boolean>>({})
   const [timeRemaining, setTimeRemaining] = useState(30 * 60)
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now())
-  const [currentInterviewQuestion, setCurrentInterviewQuestion] = useState(0)
-  const [interviewAnswer, setInterviewAnswer] = useState('')
-  const [interviewAnswers, setInterviewAnswers] = useState<string[]>([])
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [finalScore, setFinalScore] = useState(0)
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
   const [shake, setShake] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Get questions for selected specialization
+  // Get questions for selected specialization (canon: 7 MCQ + 3 numeric)
   const questions = useMemo(
-    () => (specialization ? getRandomQuestions(specialization, 10) : []),
+    () => (specialization ? getRandomQuestions(specialization) : []),
     [specialization]
   )
-  const aiQuestions = specialization ? getAIQuestionsForSpecialization(specialization) : []
   const specConfig = specialization ? specializations[specialization] : null
 
   // Notify parent window of events
@@ -108,7 +99,7 @@ function SkillProofContent() {
 
   // Timer effect
   useEffect(() => {
-    if (stage !== 'testing' && stage !== 'ai-interview') return
+    if (stage !== 'testing') return
     if (proctoring.isTerminated) return
 
     const timer = setInterval(() => {
@@ -125,58 +116,28 @@ function SkillProofContent() {
     return () => clearInterval(timer)
   }, [stage, proctoring.isTerminated])
 
-  // Analysis effect - calculate real score (objective + AI-graded open/interview answers)
+  // Analysis effect — fully local, deterministic scoring over exactly 10
+  // questions (7 MCQ + 3 numeric). No open questions, no AI grading.
   useEffect(() => {
     if (stage !== 'analyzing') return
 
     let cancelled = false
 
-    const finalize = async () => {
-      const openTestQuestions = questions.filter((q) => q.type === 'open')
-      const objectiveQuestions = questions.filter((q) => q.type !== 'open')
-
-      const openTestInputs: OpenAnswerInput[] = openTestQuestions.map((q) => ({
-        question: q.text,
-        answer: String(answers[q.id] ?? ''),
-        reference: q.sampleAnswer,
-      }))
-      const interviewInputs: OpenAnswerInput[] = aiQuestions.map((q, i) => ({
-        question: q.text,
-        answer: interviewAnswers[i] ?? '',
-      }))
-
-      const allOpenInputs = [...openTestInputs, ...interviewInputs]
-      let openGrades: number[] = []
-      if (allOpenInputs.length > 0) {
-        const fallback = new Promise<{ answers: { score: number }[] }>((resolve) =>
-          setTimeout(
-            () => resolve({ answers: allOpenInputs.map((i) => ({ score: i.answer.trim() ? 50 : 0 })) }),
-            15000
-          )
-        )
-        const result = await Promise.race([gradeOpenAnswers(allOpenInputs), fallback])
-        openGrades = result.answers.map((a) => a.score)
-      }
+    const finalize = () => {
       if (cancelled) return
 
-      const openTestGrades = openGrades.slice(0, openTestInputs.length)
-      const interviewGrades = openGrades.slice(openTestInputs.length)
-
-      const objectiveItemScores = objectiveQuestions.map((q) =>
-        isAnswerCorrect(q, answers[q.id]) ? 100 : 0
+      const correct = questions.reduce(
+        (acc, q) => acc + (isAnswerCorrect(q, answers[q.id]) ? 1 : 0),
+        0
       )
-      const objectiveCorrect = objectiveItemScores.filter((s) => s === 100).length
-      const openCorrect = openTestGrades.filter((s) => s >= 60).length
-      const correct = objectiveCorrect + openCorrect
       setCorrectAnswersCount(correct)
 
-      const allItemScores = [...objectiveItemScores, ...openTestGrades, ...interviewGrades]
-      const score = allItemScores.length
-        ? Math.round(allItemScores.reduce((sum, s) => sum + s, 0) / allItemScores.length)
-        : 0
+      const total = questions.length || TEST_CONFIG.QUESTIONS_PER_TEST
+      const score = Math.round((correct / total) * 100)
       setFinalScore(score)
 
-      const passed = specialization ? checkTestPassed(specialization, correct) : false
+      // Pass by canon: PASS_THRESHOLD correct out of QUESTIONS_PER_TEST.
+      const passed = correct >= TEST_CONFIG.PASS_THRESHOLD
 
       setStage('result')
       if (passed) {
@@ -189,7 +150,7 @@ function SkillProofContent() {
       setAnalysisProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval)
-          void finalize()
+          finalize()
           return 100
         }
         return prev + 2
@@ -200,7 +161,7 @@ function SkillProofContent() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [stage, notifyParent, answers, questions, aiQuestions, interviewAnswers, specialization])
+  }, [stage, notifyParent, answers, questions])
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
 
@@ -224,19 +185,6 @@ function SkillProofContent() {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1)
       setQuestionStartTime(Date.now())
-    } else {
-      setStage('ai-interview')
-    }
-  }
-
-  const handleInterviewSubmit = () => {
-    if (!interviewAnswer.trim()) return
-    
-    setInterviewAnswers(prev => [...prev, interviewAnswer])
-    setInterviewAnswer('')
-    
-    if (currentInterviewQuestion < aiQuestions.length - 1) {
-      setCurrentInterviewQuestion(prev => prev + 1)
     } else {
       proctoring.stopProctoring()
       setStage('analyzing')
@@ -555,87 +503,38 @@ function SkillProofContent() {
                       )}
                     </div>
                   ) : (
-                    <Textarea
-                      ref={textareaRef}
-                      placeholder="Введите ваш ответ..."
-                      value={(answers[questions[currentQuestion].id] as string) || ''}
-                      onChange={(e) => {
-                        handleAnswerSelect(questions[currentQuestion].id, e.target.value)
-                        proctoring.handleTyping(e.target.value)
-                      }}
-                      className="min-h-[120px]"
-                    />
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Введите числовой ответ (только цифры, без пробелов)
+                      </p>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Например: 22000"
+                        className="max-w-xs text-lg"
+                        value={(answers[questions[currentQuestion].id] as string) ?? ''}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/[^0-9]/g, '')
+                          handleAnswerSelect(questions[currentQuestion].id, digitsOnly)
+                          proctoring.handleTyping(digitsOnly)
+                        }}
+                      />
+                    </div>
                   )}
 
                   <Button
                     className="w-full"
-                    disabled={answers[questions[currentQuestion].id] === undefined}
+                    disabled={(() => {
+                      const a = answers[questions[currentQuestion].id]
+                      if (a === undefined || a === null) return true
+                      if (typeof a === 'string') return a.trim() === ''
+                      return false
+                    })()}
                     onClick={handleNextQuestion}
                   >
-                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Перейти к AI-интервью'}
+                    {currentQuestion < questions.length - 1 ? 'Следующий вопрос' : 'Завершить тест'}
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-
-          {/* AI Interview Stage */}
-          {stage === 'ai-interview' && aiQuestions.length > 0 && (
-            <motion.div
-              key="ai-interview"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-            >
-              <ProctoringWidget 
-                isActive={proctoring.isActive}
-                violations={proctoring.violationCount}
-                maxViolations={proctoring.maxViolations}
-              />
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5 text-primary" />
-                    AI-Интервью {specConfig && `- ${specConfig.name}`}
-                  </CardTitle>
-                  <CardDescription>
-                    Вопрос {currentInterviewQuestion + 1} из {aiQuestions.length}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="bg-muted/50 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <MessageSquare className="h-4 w-4 text-primary" />
-                      </div>
-                      <p className="text-sm">{aiQuestions[currentInterviewQuestion]?.text}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {interviewAnswers.map((answer, idx) => (
-                      <div key={idx} className="bg-primary/5 rounded-lg p-3 text-sm">
-                        {answer}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Textarea
-                      placeholder="Введите ваш ответ..."
-                      value={interviewAnswer}
-                      onChange={(e) => {
-                        setInterviewAnswer(e.target.value)
-                        proctoring.handleTyping(e.target.value)
-                      }}
-                      className="flex-1"
-                    />
-                    <Button onClick={handleInterviewSubmit} disabled={!interviewAnswer.trim()}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -706,7 +605,7 @@ function SkillProofContent() {
                     </div>
                   </CardContent>
                 </Card>
-              ) : specialization && checkTestPassed(specialization, correctAnswersCount) ? (
+              ) : finalScore >= 70 ? (
                 <>
                   <CertificateCard
                     candidateName="Кандидат"

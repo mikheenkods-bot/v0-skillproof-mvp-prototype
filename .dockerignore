@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+/*.png
+tsconfig.tsbuildinfo
+.env
+.env.*
+!.env.example
+Dockerfile
+docker-compose.yml
+Caddyfile
+DEPLOY.md
+README.md

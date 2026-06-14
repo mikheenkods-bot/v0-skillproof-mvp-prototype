@@ -82,6 +82,8 @@ export default function SkillProofPage() {
   // Server-side repeat-attempt gate (by email — VPN-proof, unlike an IP check).
   const [checkingCompletion, setCheckingCompletion] = useState(false)
   const [existingCompletion, setExistingCompletion] = useState<ExistingCompletion | null>(null)
+  // Подтверждение выхода из теста до его завершения.
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
 
   // Questions are randomized per attempt (set in handleStartTest), so each
   // candidate and each retry gets a different set and order of questions.
@@ -358,11 +360,16 @@ export default function SkillProofPage() {
     setCheckingCompletion(true)
     try {
       const completion = await getCompletionByEmail(candidateEmail)
-      if (completion.completed) {
+      // Кандидату доступно TEST_CONFIG.MAX_ATTEMPTS попыток (идентификация по email).
+      // Блокируем ТОЛЬКО когда попытки исчерпаны. Если осталась хотя бы одна —
+      // пропускаем к тесту и продолжаем нумерацию с учётом уже сделанных попыток.
+      if (completion.completed && completion.attempts >= TEST_CONFIG.MAX_ATTEMPTS) {
         setExistingCompletion(completion)
         setStage('already-completed')
         return
       }
+      // Следующая попытка = число уже сделанных + 1 (для корректной логики пересдачи).
+      setAttemptNumber(completion.attempts + 1)
       setStage('consent')
       setShowConsentModal(true)
     } catch (error) {
@@ -449,6 +456,16 @@ export default function SkillProofPage() {
     }
   }
 
+  // Выход из теста до завершения: попытка НЕ засчитывается (результат не
+  // сохраняется), таймер и прокторинг останавливаются, кандидат уходит на главную.
+  const handleConfirmExit = () => {
+    setShowExitConfirm(false)
+    proctoring.stopSession()
+    proctoring.exitFullscreen()
+    localStorage.removeItem(TIMER_KEY)
+    router.push('/')
+  }
+
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
 
   return (
@@ -477,8 +494,10 @@ export default function SkillProofPage() {
         isOpen={showConsentModal && stage === 'consent'}
         onAccept={handleConsentAccept}
         onClose={() => {
+          // «Не сейчас» — возвращаем кандидата на стартовый экран ввода
+          // данных (ФИО и почта), а не на главную страницу сайта.
           setShowConsentModal(false)
-          router.push('/')
+          setStage('disclaimer')
         }}
         systemCheck={proctoring.systemCheck}
         onRunSystemCheck={proctoring.runSystemCheck}
@@ -491,6 +510,59 @@ export default function SkillProofPage() {
         maxExits={3}
         onReturnToFullscreen={proctoring.enterFullscreen}
       />
+
+      {/* Exit confirmation modal — попытка не будет засчитана */}
+      <AnimatePresence>
+        {showExitConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="exit-confirm-title"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <h2 id="exit-confirm-title" className="text-lg font-semibold">
+                    Выйти из теста?
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1 text-pretty">
+                    Вы не завершили тест до конца. Если вы подтверждаете выход, то
+                    ваша попытка не будет засчитана.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowExitConfirm(false)}
+                >
+                  Продолжить тест
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={handleConfirmExit}
+                >
+                  Подтвердить выход
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       <main className="container mx-auto px-4 py-8">
         <AnimatePresence mode="wait">
@@ -844,12 +916,23 @@ export default function SkillProofPage() {
                     Режим прокторинга активен
                   </div>
                 </div>
-                <div className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-lg font-bold",
-                  timeRemaining <= 300 ? "bg-destructive/10 text-destructive" : "bg-muted"
-                )}>
-                  <Clock className="h-5 w-5" />
-                  {formatTime(timeRemaining)}
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-lg font-bold",
+                    timeRemaining <= 300 ? "bg-destructive/10 text-destructive" : "bg-muted"
+                  )}>
+                    <Clock className="h-5 w-5" />
+                    {formatTime(timeRemaining)}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowExitConfirm(true)}
+                    className="text-muted-foreground"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Выйти из теста
+                  </Button>
                 </div>
               </div>
 
@@ -1053,8 +1136,10 @@ export default function SkillProofPage() {
                     <CheckCircle2 className="h-8 w-8 text-primary" />
                   </div>
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
-                  <p className="text-muted-foreground mb-8">
-                    Ваш результат зафиксирован и сохранён.
+                  <p className="text-muted-foreground mb-8 text-pretty">
+                    {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS
+                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'
+                      : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'}
                   </p>
 
                   {/* Score out of 100 */}
@@ -1107,8 +1192,8 @@ export default function SkillProofPage() {
                     <div className="text-sm">
                       <p className="font-medium">Результат зафиксирован</p>
                       <p className="text-muted-foreground">
-                        Идентификатор: {certificateId || '—'}. Результат сохранён в
-                        базе и может быть передан работодателю.
+                        Идентификатор: {certificateId || '—'}. Результат тестирования
+                        будет передан на платформу «Работа.ру».
                       </p>
                     </div>
                   </div>
@@ -1130,7 +1215,7 @@ export default function SkillProofPage() {
                   )}
 
                   {/* One-time retake option */}
-                  {attemptNumber < 2 ? (
+                  {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS ? (
                     <>
                       <p className="text-sm text-muted-foreground mb-3">
                         Если вы не довольны результатом, доступна одна пересдача.

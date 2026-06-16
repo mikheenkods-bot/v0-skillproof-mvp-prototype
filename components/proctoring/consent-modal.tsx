@@ -577,6 +577,7 @@ export function ConsentModal({
         </Button>
         <Button 
           onClick={handleAccept} 
+          data-testid="consent-accept"
           disabled={!accepted || !checkResult}
           className="flex-1"
         >

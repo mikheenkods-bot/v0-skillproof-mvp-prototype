@@ -24,6 +24,7 @@ import {
   type Question
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
+import { E2E_TEST_MODE } from '@/lib/e2e'
 import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
 import { sendResultEmail } from '@/app/actions/send-result-email'
 import { trackEvent } from '@/app/actions/analytics'
@@ -689,6 +690,7 @@ export default function SkillProofPage() {
                     <Label htmlFor="candidate-name">Имя и фамилия</Label>
                     <Input
                       id="candidate-name"
+                      data-testid="name-input"
                       value={candidateName}
                       onChange={(e) => setCandidateName(e.target.value)}
                       placeholder="Иван Иванов"
@@ -699,6 +701,7 @@ export default function SkillProofPage() {
                     <Label htmlFor="candidate-email">Email</Label>
                     <Input
                       id="candidate-email"
+                      data-testid="email-input"
                       type="email"
                       value={candidateEmail}
                       onChange={(e) => setCandidateEmail(e.target.value)}
@@ -714,13 +717,14 @@ export default function SkillProofPage() {
                   >
                     <input
                       id="pdn-consent"
+                      data-testid="pdn-consent"
                       type="checkbox"
                       checked={pdnConsent}
                       onChange={(e) => setPdnConsent(e.target.checked)}
                       className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
                     />
                     <span className="text-sm text-muted-foreground leading-relaxed">
-                      Я даю согласие на обработку моих персональных данных и передачу
+                      Я даю согласие на обработку моих персональных данных и пе��едачу
                       результата тестирования работодателю в соответствии с{' '}
                       <a
                         href="/privacy"
@@ -740,6 +744,7 @@ export default function SkillProofPage() {
               <Button
                 size="lg"
                 className="w-full"
+                data-testid="begin-button"
                 disabled={checkingCompletion || !pdnConsent || !candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
                 onClick={handleBeginAssessment}
               >
@@ -875,6 +880,7 @@ export default function SkillProofPage() {
                     <div className="flex-1">
                       <input
                         type="checkbox"
+                        data-testid={`prep-checkbox-${item.id}`}
                         className="sr-only"
                         checked={preparationChecks[item.id] || false}
                         onChange={(e) => setPreparationChecks(prev => ({
@@ -892,6 +898,7 @@ export default function SkillProofPage() {
               <Button
                 size="lg"
                 className="w-full"
+                data-testid="prep-start"
                 disabled={!allChecked}
                 onClick={() => setStage('specialization')}
               >
@@ -920,6 +927,7 @@ export default function SkillProofPage() {
               <div className="grid gap-6">
                 {/* Бухгалтер */}
                 <motion.button
+                  data-testid="spec-accountant"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
@@ -1024,6 +1032,26 @@ export default function SkillProofPage() {
                   {questions[currentQuestion].text}
                 </h2>
 
+                {/*
+                  Детерминированный «ключ» для E2E-автотеста. Рендерится ТОЛЬКО
+                  при активном тестовом флаге (вне продакшена). В обычном режиме
+                  элемента нет — ответы не раскрываются.
+                  - multiple_choice: индекс правильного варианта
+                  - numeric: правильное число
+                */}
+                {E2E_TEST_MODE && (
+                  <span
+                    data-testid="answer-key"
+                    hidden
+                    aria-hidden="true"
+                    style={{ display: 'none' }}
+                  >
+                    {questions[currentQuestion].type === 'multiple_choice'
+                      ? String(questions[currentQuestion].correctAnswer ?? '')
+                      : String(questions[currentQuestion].numericAnswer ?? '')}
+                  </span>
+                )}
+
                 {questions[currentQuestion].type === 'multiple_choice' ? (
                   <div className="space-y-3">
                     {questions[currentQuestion].options?.map((option, index) => {
@@ -1034,6 +1062,7 @@ export default function SkillProofPage() {
                       return (
                         <button
                           key={index}
+                          data-testid={`question-option-${index}`}
                           onClick={() => handleAnswer(questions[currentQuestion].id, index)}
                           disabled={isAnswerLocked}
                           className={cn(
@@ -1093,6 +1122,7 @@ export default function SkillProofPage() {
                     </p>
                     <Input
                       type="text"
+                      data-testid="numeric-input"
                       inputMode="numeric"
                       placeholder="Например: 22000"
                       className="max-w-xs text-lg"
@@ -1109,6 +1139,7 @@ export default function SkillProofPage() {
                 <div className="mt-8 flex justify-end">
                   <Button
                     size="lg"
+                    data-testid={currentQuestion < questions.length - 1 ? 'next-question' : 'finish-test'}
                     onClick={handleNextQuestion}
                     disabled={(() => {
                       const a = answers[questions[currentQuestion].id]
@@ -1194,7 +1225,7 @@ export default function SkillProofPage() {
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8 text-pretty">
                     {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS
-                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'
+                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и о��правлены на платформу «Работа.ру».'
                       : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'}
                   </p>
 
@@ -1204,7 +1235,10 @@ export default function SkillProofPage() {
                       Ваш балл по 100-балльной шкале
                     </div>
                     <div className="flex items-end justify-center gap-1 mb-4">
-                      <span className="text-6xl font-bold text-primary tabular-nums">
+                      <span
+                        data-testid="result-score"
+                        className="text-6xl font-bold text-primary tabular-nums"
+                      >
                         {finalScore}
                       </span>
                       <span className="text-2xl text-muted-foreground mb-1">/100</span>
@@ -1260,8 +1294,9 @@ export default function SkillProofPage() {
                     <div className="text-sm">
                       <p className="font-medium">Результат зафиксирован</p>
                       <p className="text-muted-foreground">
-                        Идентификатор: {certificateId || '—'}. Результат тестирования
-                        будет передан на платформу «Работа.ру».
+                        Идентификатор:{' '}
+                        <span data-testid="result-certificate-id">{certificateId || '—'}</span>.
+                        Результат тестирования будет передан на платформу «Работа.ру».
                       </p>
                     </div>
                   </div>

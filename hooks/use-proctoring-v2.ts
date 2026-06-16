@@ -23,6 +23,7 @@ import {
   SuspiciousPattern,
   analyzeAnswerTiming 
 } from '@/lib/proctoring/typing-analytics'
+import { E2E_TEST_MODE } from '@/lib/e2e'
 
 export interface UseProctoringV2Options {
   attemptId?: string
@@ -185,12 +186,14 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
       toast.warning('Предупреждение', { description })
     }
     
-    // Check if should terminate
+    // Check if should terminate.
+    // В E2E-режиме прокторинг продолжает фиксировать события (поток честный),
+    // но НЕ завершает тест принудительно — иначе автотест не дойдёт до конца.
     setState(prev => {
       const violationCount = prev.tabSwitchCount + prev.fullscreenExitCount + 
         prev.copyAttemptCount + prev.pasteAttemptCount
       
-      if (violationCount >= maxViolations && !prev.isTerminated) {
+      if (!E2E_TEST_MODE && violationCount >= maxViolations && !prev.isTerminated) {
         onTerminate?.()
         return { ...prev, isTerminated: true, isActive: false }
       }
@@ -251,6 +254,15 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
 
   // Fullscreen management
   const enterFullscreen = useCallback(async () => {
+    // В E2E-режиме полноэкранный режим НЕ обязателен: автоматизированный браузер
+    // не может запросить fullscreen без жеста пользователя. Помечаем как «вошли»
+    // только логически, чтобы поток не блокировался.
+    if (E2E_TEST_MODE) {
+      setState(prev => ({ ...prev, isFullscreen: true }))
+      setFullscreenPaused(false)
+      logEvent('fullscreen_enter', { e2e: true }, 'E2E: полноэкранный режим не требуется')
+      return true
+    }
     try {
       await document.documentElement.requestFullscreen()
       setState(prev => ({ ...prev, isFullscreen: true }))
@@ -325,6 +337,12 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     // Fullscreen change
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && state.isActive) {
+        // В E2E-режиме выход из fullscreen фиксируется как событие (поток честный),
+        // но НЕ считается нарушением и НЕ ставит тест на паузу.
+        if (E2E_TEST_MODE) {
+          logEvent('fullscreen_exit', { e2e: true }, 'E2E: выход из fullscreen (не блокирует)')
+          return
+        }
         setState(prev => ({ 
           ...prev, 
           isFullscreen: false,

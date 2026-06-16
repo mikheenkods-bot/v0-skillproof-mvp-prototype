@@ -50,3 +50,45 @@ export const proctoringEvents = pgTable(
 
 export type ProctoringEventRow = typeof proctoringEvents.$inferSelect
 export type NewProctoringEventRow = typeof proctoringEvents.$inferInsert
+
+/**
+ * Funnel analytics. One row per tracked step so admins can see how many people
+ * visited the test page, started a test, completed it, or abandoned it midway.
+ * eventType is one of: 'visit' | 'test_started' | 'test_completed' | 'test_abandoned'.
+ */
+export const analyticsEvents = pgTable(
+  'analytics_events',
+  {
+    id: serial('id').primaryKey(),
+    eventType: text('event_type').notNull(),
+    attemptId: text('attempt_id'),
+    email: text('email'),
+    specialization: text('specialization'),
+    payload: jsonb('payload').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    typeIdx: index('idx_analytics_events_type').on(table.eventType),
+  })
+)
+
+export type AnalyticsEventRow = typeof analyticsEvents.$inferSelect
+export type NewAnalyticsEventRow = typeof analyticsEvents.$inferInsert
+
+/**
+ * Candidate feedback collected after finishing the test: a 1–5 rating and an
+ * optional free-text comment. Surfaced to admins on the results dashboard.
+ */
+export const feedback = pgTable('feedback', {
+  id: serial('id').primaryKey(),
+  certificateId: text('certificate_id'),
+  candidateEmail: text('candidate_email'),
+  candidateName: text('candidate_name'),
+  specialization: text('specialization'),
+  rating: integer('rating').notNull(),
+  comment: text('comment'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type FeedbackRow = typeof feedback.$inferSelect
+export type NewFeedbackRow = typeof feedback.$inferInsert

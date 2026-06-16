@@ -26,6 +26,10 @@ import {
 import { cn } from '@/lib/utils'
 import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
 import { sendResultEmail } from '@/app/actions/send-result-email'
+import { trackEvent } from '@/app/actions/analytics'
+import { downloadCertificatePdf } from '@/lib/certificate-pdf'
+import { FeedbackDialog } from '@/components/feedback-dialog'
+import { RabotaUploadInstruction } from '@/components/rabota-upload-instruction'
 import {
   Shield,
   Building2,
@@ -43,7 +47,8 @@ import {
   Camera,
   ShieldCheck,
   Mail,
-  Award
+  Award,
+  Download
 } from 'lucide-react'
 
 type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'analyzing' | 'result'
@@ -84,6 +89,8 @@ export default function SkillProofPage() {
   const [existingCompletion, setExistingCompletion] = useState<ExistingCompletion | null>(null)
   // Подтверждение выхода из теста до его завершения.
   const [showExitConfirm, setShowExitConfirm] = useState(false)
+  // Статус генерации PDF-сертификата.
+  const [pdfStatus, setPdfStatus] = useState<'idle' | 'generating'>('idle')
 
   // Questions are randomized per attempt (set in handleStartTest), so each
   // candidate and each retry gets a different set and order of questions.
@@ -276,6 +283,13 @@ export default function SkillProofPage() {
         proctoringLog,
       })
 
+      // Воронка: тест завершён (с признаком прохождения и нарушений).
+      void trackEvent('test_completed', {
+        email: candidateEmail,
+        specialization: specConfig?.name || 'skillproof',
+        payload: { score, passed, violations: violationCount },
+      })
+
       // Email the candidate a copy of their result (fire-and-forget).
       if (candidateEmail.trim()) {
         setEmailStatus('sending')
@@ -325,6 +339,13 @@ export default function SkillProofPage() {
     }
     lastViolationCountRef.current = currentCount
   }, [proctoring.violations.length, proctoring.violations, mediaEnabled.camera, media])
+
+  // Воронка: фиксируем заход на страницу тестирования один раз за загрузку.
+  // Это даёт администратору метрику «сколько человек заходило на сайт».
+  useEffect(() => {
+    void trackEvent('visit', { specialization: 'skillproof' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -400,6 +421,11 @@ export default function SkillProofPage() {
     proctoring.startQuestionTimer() // Start timing for first question
     setStage('testing')
     setQuestionStartTime(Date.now())
+    // Воронка: кандидат приступил к тесту.
+    void trackEvent('test_started', {
+      email: candidateEmail,
+      specialization: activeSpec || 'skillproof',
+    })
   }
 
   // One-time retake: resets the attempt state and returns to specialization
@@ -463,7 +489,37 @@ export default function SkillProofPage() {
     proctoring.stopSession()
     proctoring.exitFullscreen()
     localStorage.removeItem(TIMER_KEY)
+    // Воронка: кандидат вышел из теста до завершения (не завершил).
+    void trackEvent('test_abandoned', {
+      email: candidateEmail,
+      specialization: specialization || 'skillproof',
+      payload: { question: currentQuestion + 1, total: questions.length },
+    })
     router.push('/')
+  }
+
+  // Генерация и скачивание PDF-сертификата (только для сдавших).
+  const handleDownloadCertificate = async () => {
+    if (pdfStatus === 'generating') return
+    setPdfStatus('generating')
+    try {
+      await downloadCertificatePdf({
+        certificateId,
+        candidateName: candidateName.trim(),
+        candidateEmail: candidateEmail.trim(),
+        specialization: specConfig?.name || 'Бухгалтер',
+        score: finalScore,
+        correctAnswers: correctAnswersCount,
+        totalQuestions: TEST_CONFIG.QUESTIONS_PER_TEST,
+        attemptNumber,
+        maxAttempts: TEST_CONFIG.MAX_ATTEMPTS,
+        date: new Date(),
+      })
+    } catch (error) {
+      console.error('[v0] PDF generation failed:', error)
+    } finally {
+      setPdfStatus('idle')
+    }
   }
 
   const allChecked = preparationChecklist.every(item => preparationChecks[item.id])
@@ -1169,12 +1225,24 @@ export default function SkillProofPage() {
                         <p className="font-medium">Сертификат готов</p>
                         <p className="text-sm text-muted-foreground mb-3">
                           Поздравляем! Вы получили верифицированный сертификат SkillProof.
-                          Посмотреть его, скачать PDF или проверить подлинность можно
-                          в личном кабинете.
+                          Скачайте PDF, чтобы загрузить его в профиль на «Работа.ру»,
+                          или проверьте подлинность.
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          <Button asChild size="sm">
-                            <Link href="/candidate/cabinet">Посмотреть сертификат</Link>
+                          <Button
+                            size="sm"
+                            onClick={handleDownloadCertificate}
+                            disabled={pdfStatus === 'generating'}
+                          >
+                            {pdfStatus === 'generating' ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="mr-2 h-4 w-4" />
+                            )}
+                            Скачать сертификат (PDF)
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href="/candidate/cabinet">Личный кабинет</Link>
                           </Button>
                           <Button asChild size="sm" variant="outline">
                             <Link href={`/verify/${certificateId}`} target="_blank">
@@ -1213,6 +1281,23 @@ export default function SkillProofPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Инструкция по загрузке сертификата на «Работа.ру» — рядом с кнопкой скачивания PDF */}
+                  {correctAnswersCount >= TEST_CONFIG.PASS_THRESHOLD && certificateId && (
+                    <div className="mb-4">
+                      <RabotaUploadInstruction />
+                    </div>
+                  )}
+
+                  {/* Обратная связь о тестировании — доступна всем завершившим */}
+                  <div className="mb-6">
+                    <FeedbackDialog
+                      certificateId={certificateId || null}
+                      candidateEmail={candidateEmail.trim() || null}
+                      candidateName={candidateName.trim() || null}
+                      specialization={specConfig?.name || null}
+                    />
+                  </div>
 
                   {/* One-time retake option */}
                   {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS ? (

@@ -171,7 +171,7 @@ export default function SkillProofPage() {
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'generating'>('idle')
   // Стабильный идентификатор попытки (переживает F5; ротируется при пересдаче).
   const [attemptId, setAttemptId] = useState<string>(() => getOrCreateAttemptId())
-  // Видимое кандидату предупреждение о нарушении прокторинга (раньше нарушения
+  // В��димое кандидату предупреждение о нарушении прокторинга (раньше нарушения
   // фиксировались молча — кандидат не получал никакой обратной связи).
   const [proctoringWarning, setProctoringWarning] = useState<{
     message: string
@@ -404,7 +404,7 @@ export default function SkillProofPage() {
       // ВАЖНО: ждём завершения записи ДО показа экрана результата. Раньше это был
       // fire-and-forget (void), и если кандидат быстро закрывал вкладку, сертификат
       // не успевал сохраниться — затем /verify выдавал «Сертификат не найден».
-      // Прокторинг-лог и integrity-score сох��аняются в БД вместе с результатом.
+      // Прокторинг-лог и integrity-score сохраняются в БД вместе с результатом.
       try {
         const saveRes = await saveTestResult({
           certificateId: certId,
@@ -527,7 +527,7 @@ export default function SkillProofPage() {
     try {
       const completion = await getCompletionByEmail(candidateEmail)
       // Кандидату доступно TEST_CONFIG.MAX_ATTEMPTS попыток (идентификация по email).
-      // Блокируем ТОЛЬКО когда попытки исчерпаны. Если осталась хотя бы одна —
+      // Б��окируем ТОЛЬКО когда попытки исчерпаны. Если осталась хотя бы одна —
       // пропускаем к тесту и продолжаем нумерацию с учётом уже сделанных попыток.
       if (completion.completed && completion.attempts >= TEST_CONFIG.MAX_ATTEMPTS) {
         setExistingCompletion(completion)
@@ -558,6 +558,12 @@ export default function SkillProofPage() {
     }
     // Новый дедлайн таймера для этой попытки (привязан к attemptId, переживает F5).
     writeAnchoredDeadline(attemptId, Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000)
+    // Активируем прокторинг для КАЖДОЙ попытки. На пересдаче consent-модалка не
+    // показывается повторно, а handleRetake ротирует attemptId → хук пересоздаёт
+    // сессию с isActive:false. Без этого вызова на 2-й попытке слушатели нарушений
+    // не навешивались. startSession идемпотентен — на 1-й попытке (где он уже был
+    // вызван в handleConsentAccept) повторный вызов ничего не дублирует.
+    proctoring.startSession()
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
     proctoring.startQuestionTimer() // Start timing for first question
@@ -714,7 +720,7 @@ export default function SkillProofPage() {
         onReturnToFullscreen={proctoring.enterFullscreen}
       />
 
-      {/* Exit confirmation modal — попытка не будет засчитана */}
+      {/* Exit confirmation modal — п��пытка не будет засчитана */}
       <AnimatePresence>
         {showExitConfirm && (
           <motion.div
@@ -789,14 +795,14 @@ export default function SkillProofPage() {
               </div>
 
               <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
-                <h2 className="text-lg font-semibold mb-4">Перед ��ачалом</h2>
+                <h2 className="text-lg font-semibold mb-4">Перед началом</h2>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>
                     В данном разделе будут представлены тесты, которые помогут
                     вашему резюме получить более высокий балл при отборе.
                   </p>
                   <p>
-                    Тесты составлены с примен��нием искусственного интеллекта и
+                    Тесты составлены с применением искусственного интеллекта и
                     направлены на тестирование конкретного навыка.
                   </p>
                 </div>

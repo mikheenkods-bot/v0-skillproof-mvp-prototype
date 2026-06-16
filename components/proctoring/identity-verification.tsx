@@ -154,7 +154,18 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     setEnvironmentCheckPassed(true)
     setCapturedPhoto('/placeholder-avatar.png') // Use placeholder
     setCurrentStep('complete')
-  }, [])
+
+    // Stop any partial camera stream so the device light turns off.
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+    }
+
+    // Без этого вызова кандидат «застревал» на экране «Верификация пройдена»:
+    // confirmPhoto завершает поток через onComplete(), а пропуск — нет.
+    setTimeout(() => {
+      onComplete()
+    }, 1500)
+  }, [stream, onComplete])
 
   // Environment scan - check video is working during scan
   useEffect(() => {

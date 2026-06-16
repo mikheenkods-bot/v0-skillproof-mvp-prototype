@@ -74,6 +74,39 @@ export function ResultsTable({
     URL.revokeObjectURL(url)
   }
 
+  // Скачивание JSON через API. Ключ передаём в заголовке x-api-key, а НЕ в URL:
+  // иначе секрет (он же — пароль входа админа) утекает в историю браузера, логи
+  // сервера и Referer. Роут /api/results поддерживает оба способа — выбираем
+  // безопасный. Ответ сохраняем как файл через Blob.
+  const [downloadingJson, setDownloadingJson] = useState(false)
+  const downloadJson = async () => {
+    if (downloadingJson) return
+    setDownloadingJson(true)
+    try {
+      const res = await fetch('/api/results', {
+        headers: { 'x-api-key': accessKey },
+      })
+      if (!res.ok) {
+        throw new Error(`Ошибка ${res.status}`)
+      }
+      const data = await res.json()
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json;charset=utf-8;',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `skillproof-results-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('[v0] JSON download failed:', err)
+      alert('Не удалось скачать JSON. Попробуйте ещё раз.')
+    } finally {
+      setDownloadingJson(false)
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return results
@@ -107,15 +140,14 @@ export function ResultsTable({
             <FileDown className="h-4 w-4" />
             Экспорт CSV
           </button>
-          <a
-            href={`/api/results?api_key=${encodeURIComponent(accessKey)}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          <button
+            onClick={downloadJson}
+            disabled={downloadingJson}
+            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-60"
           >
             <FileDown className="h-4 w-4" />
-            JSON (API)
-          </a>
+            {downloadingJson ? 'Загрузка…' : 'JSON (API)'}
+          </button>
           {!embedded && (
             <form action={logoutAdmin}>
               <button

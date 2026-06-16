@@ -171,6 +171,14 @@ export default function SkillProofPage() {
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'generating'>('idle')
   // Стабильный идентификатор попытки (переживает F5; ротируется при пересдаче).
   const [attemptId, setAttemptId] = useState<string>(() => getOrCreateAttemptId())
+  // Видимое кандидату предупреждение о нарушении прокторинга (раньше нарушения
+  // фиксировались молча — кандидат не получал никакой обратной связи).
+  const [proctoringWarning, setProctoringWarning] = useState<{
+    message: string
+    severity: 'low' | 'medium' | 'high' | 'critical'
+    count: number
+  } | null>(null)
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Questions are randomized per attempt (set in handleStartTest), so each
   // candidate and each retry gets a different set and order of questions.
@@ -183,6 +191,38 @@ export default function SkillProofPage() {
     userId: 'current-user',
     specializationId: specialization || 'general',
     maxViolations: 3,
+    onViolation: (event) => {
+      // Показываем кандидату видимое предупреждение в реальном времени.
+      // Человекочитаемый текст по типу события.
+      const labels: Record<string, string> = {
+        tab_hidden: 'Вы переключились на другую вкладку или окно',
+        focus_lost: 'Окно теста потеряло фокус',
+        fullscreen_exit: 'Вы вышли из полноэкранного режима',
+        window_resize: 'Изменён размер окна',
+        copy_attempt: 'Попытка копирования запрещена',
+        paste_attempt: 'Вставка текста запрещена',
+        paste_detected: 'Обнаружена вставка текста',
+        cut_attempt: 'Вырезание текста запрещено',
+        context_menu: 'Контекстное меню отключено',
+        devtools_detected: 'Обнаружены инструменты разработчика',
+        multi_monitor_detected: 'Обнаружено несколько мониторов',
+        headless_detected: 'Обнаружен автоматизированный браузер',
+        suspicious_input: 'Подозрительный ввод',
+        suspicious_timing: 'Подозрительно быстрый ответ',
+      }
+      const message = labels[event.eventType] || event.description || 'Зафиксировано нарушение'
+      const severity = (['low', 'medium', 'high', 'critical'].includes(event.severity)
+        ? event.severity
+        : 'medium') as 'low' | 'medium' | 'high' | 'critical'
+
+      setProctoringWarning(prev => ({
+        message,
+        severity,
+        count: (prev?.count ?? 0) + 1,
+      }))
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current)
+      warningTimerRef.current = setTimeout(() => setProctoringWarning(null), 6000)
+    },
     onTerminate: () => {
       // Take snapshot on termination
       if (mediaEnabled.camera) {
@@ -212,6 +252,13 @@ export default function SkillProofPage() {
   useEffect(() => {
     if (!attemptId) setAttemptId(getOrCreateAttemptId())
   }, [attemptId])
+
+  // Чистим таймер предупреждения прокторинга при размонтировании.
+  useEffect(() => {
+    return () => {
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current)
+    }
+  }, [])
 
   // Синхронизация таймера со стадией: на стартовом экране сохранённого дедлайна
   // быть не должно. Это устраняет рассинхрон «таймер жив, а стадия сброшена»
@@ -354,23 +401,32 @@ export default function SkillProofPage() {
       }))
 
       // Persist result to the database (every attempt, pass or fail).
-      // Прокторинг-лог и integrity-score сохраняются в БД вместе с результатом —
-      // переживают перезапуск сервера (durable), в отличие от in-memory Map.
-      void saveTestResult({
-        certificateId: certId,
-        candidateName: candidateName.trim() || null,
-        candidateEmail: candidateEmail.trim() || null,
-        specialization: specConfig?.name || 'Бухгалтер',
-        score,
-        correctAnswers: correct,
-        totalQuestions: questions.length,
-        passed,
-        isClean,
-        violations: violationCount,
-        integrityScore: proctoring.integrityScore ?? 0,
-        skills,
-        proctoringLog,
-      })
+      // ВАЖНО: ждём завершения записи ДО показа экрана результата. Раньше это был
+      // fire-and-forget (void), и если кандидат быстро закрывал вкладку, сертификат
+      // не успевал сохраниться — затем /verify выдавал «Сертификат не найден».
+      // Прокторинг-лог и integrity-score сох��аняются в БД вместе с результатом.
+      try {
+        const saveRes = await saveTestResult({
+          certificateId: certId,
+          candidateName: candidateName.trim() || null,
+          candidateEmail: candidateEmail.trim() || null,
+          specialization: specConfig?.name || 'Бухгалтер',
+          score,
+          correctAnswers: correct,
+          totalQuestions: questions.length,
+          passed,
+          isClean,
+          violations: violationCount,
+          integrityScore: proctoring.integrityScore ?? 0,
+          skills,
+          proctoringLog,
+        })
+        if (!saveRes?.success) {
+          console.error('[v0] saveTestResult returned failure:', saveRes)
+        }
+      } catch (err) {
+        console.error('[v0] saveTestResult threw:', err)
+      }
 
       // Воронка: тест завершён (с признаком прохождения и нарушений).
       void trackEvent('test_completed', {
@@ -733,14 +789,14 @@ export default function SkillProofPage() {
               </div>
 
               <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
-                <h2 className="text-lg font-semibold mb-4">Перед началом</h2>
+                <h2 className="text-lg font-semibold mb-4">Перед ��ачалом</h2>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>
                     В данном разделе будут представлены тесты, которые помогут
                     вашему резюме получить более высокий балл при отборе.
                   </p>
                   <p>
-                    Тесты составлены с применением искусственного интеллекта и
+                    Тесты составлены с примен��нием искусственного интеллекта и
                     направлены на тестирование конкретного навыка.
                   </p>
                 </div>
@@ -816,7 +872,7 @@ export default function SkillProofPage() {
                       className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
                     />
                     <span className="text-sm text-muted-foreground leading-relaxed">
-                      Я даю согласие на обработку моих персональных данных и пе��едачу
+                      Я даю согласие на обработку моих персональных данных и передачу
                       результата тестирования работодателю в соответствии с{' '}
                       <a
                         href="/privacy"
@@ -1092,6 +1148,39 @@ export default function SkillProofPage() {
                 </div>
               </div>
 
+              {/* Real-time proctoring warning. Раньше нарушения фиксировались молча;
+                  теперь кандидат сразу видит предупреждение и счётчик. */}
+              <AnimatePresence>
+                {proctoringWarning && (
+                  <motion.div
+                    role="alert"
+                    aria-live="assertive"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className={cn(
+                      'mb-6 flex items-start gap-3 rounded-lg border px-4 py-3',
+                      proctoringWarning.severity === 'critical' || proctoringWarning.severity === 'high'
+                        ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                        : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                    )}
+                  >
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold">
+                        Предупреждение прокторинга
+                      </p>
+                      <p className="text-sm">
+                        {proctoringWarning.message}. Это нарушение зафиксировано и влияет на индекс честности.
+                      </p>
+                      <p className="text-xs mt-1 opacity-80">
+                        {`Всего нарушений: ${proctoringWarning.count} из 3 до автоматического завершения теста.`}
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Progress */}
               <div className="mb-8">
                 <div className="flex items-center justify-between text-sm mb-2">
@@ -1216,7 +1305,7 @@ export default function SkillProofPage() {
                       type="text"
                       data-testid="numeric-input"
                       inputMode="numeric"
-                      placeholder="Например: 22000"
+                      placeholder="Введите число"
                       className="max-w-xs text-lg"
                       value={(answers[questions[currentQuestion].id] as string) ?? ''}
                       onChange={(e) => {
@@ -1317,7 +1406,7 @@ export default function SkillProofPage() {
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8 text-pretty">
                     {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS
-                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и о��правлены на платформу «Работа.ру».'
+                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'
                       : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'}
                   </p>
 
@@ -1366,9 +1455,6 @@ export default function SkillProofPage() {
                               <Download className="mr-2 h-4 w-4" />
                             )}
                             Скачать сертификат (PDF)
-                          </Button>
-                          <Button asChild size="sm" variant="outline">
-                            <Link href="/candidate/cabinet">Личный кабинет</Link>
                           </Button>
                           <Button asChild size="sm" variant="outline">
                             <Link href={`/verify/${certificateId}`} target="_blank">

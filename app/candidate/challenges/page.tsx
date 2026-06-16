@@ -510,7 +510,7 @@ export default function ChallengesPage() {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 rounded-xl bg-muted/50">
-                      <p className="text-sm text-muted-foreground mb-1">Оценка эксперта</p>
+                      <p className="text-sm text-muted-foreground mb-1">Оценк�� эксперта</p>
                       <p className="text-3xl font-bold text-primary">{feedbackScore}%</p>
                     </div>
                     <div className="p-4 rounded-xl bg-muted/50">
@@ -589,12 +589,6 @@ export default function ChallengesPage() {
                   }}
                 >
                   К списку челленджей
-                </Button>
-                <Button 
-                  className="flex-1"
-                  onClick={() => router.push('/candidate/cabinet')}
-                >
-                  Личный кабинет
                 </Button>
               </div>
             </motion.div>

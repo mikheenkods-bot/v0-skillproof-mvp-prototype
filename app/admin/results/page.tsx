@@ -1,10 +1,8 @@
-import { desc } from 'drizzle-orm'
 import { DatabaseZap } from 'lucide-react'
-import { db } from '@/lib/db'
-import { testResults } from '@/lib/db/schema'
 import { Button } from '@/components/ui/button'
 import { KeyGate } from './key-gate'
-import { ResultsTable } from './results-table'
+import { AdminDashboard } from './admin-dashboard'
+import { getDashboardData } from './dashboard-data'
 import { isAdminAuthenticated } from './auth'
 
 export const dynamic = 'force-dynamic'
@@ -22,12 +20,8 @@ export default async function AdminResultsPage() {
   // просыпается из спящего режима) первый запрос может временно упасть.
   // Показываем понятное сообщение с кнопкой обновления вместо краша всей страницы.
   try {
-    const results = await db
-      .select()
-      .from(testResults)
-      .orderBy(desc(testResults.createdAt))
-
-    return <ResultsTable results={results} accessKey={requiredKey} />
+    const data = await getDashboardData()
+    return <AdminDashboard data={data} accessKey={requiredKey} />
   } catch (error) {
     console.log('[v0] admin results DB error:', error instanceof Error ? error.message : error)
     return <DbErrorNotice />

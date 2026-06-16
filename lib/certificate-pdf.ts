@@ -197,7 +197,7 @@ async function drawCertificate(
  * без обращения к серверу. Размер итогового файла — один JPEG, обычно
  * 200–500 КБ, что заведомо меньше лимита в 5 МБ.
  */
-export async function downloadCertificatePdf(data: CertificatePdfData): Promise<void> {
+export async function buildCertificatePdfBlob(data: CertificatePdfData): Promise<Blob> {
   const { dataUrl, w, h } = await drawCertificate(data)
 
   const { jsPDF } = await import('jspdf')
@@ -212,7 +212,17 @@ export async function downloadCertificatePdf(data: CertificatePdfData): Promise<
   const offsetY = (pageH - imgH) / 2
 
   pdf.addImage(dataUrl, 'JPEG', offsetX, offsetY, imgW, imgH)
-  pdf.save(`SkillProof-сертификат-${data.certificateId}.pdf`)
+  return pdf.output('blob')
+}
+
+export async function downloadCertificatePdf(data: CertificatePdfData): Promise<void> {
+  const blob = await buildCertificatePdfBlob(data)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `SkillProof-сертификат-${data.certificateId}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────

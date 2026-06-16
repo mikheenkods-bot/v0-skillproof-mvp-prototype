@@ -510,7 +510,7 @@ function SkillProofContent() {
                       <Input
                         type="text"
                         inputMode="numeric"
-                        placeholder="Например: 22000"
+                        placeholder="Введите число"
                         className="max-w-xs text-lg"
                         value={(answers[questions[currentQuestion].id] as string) ?? ''}
                         onChange={(e) => {

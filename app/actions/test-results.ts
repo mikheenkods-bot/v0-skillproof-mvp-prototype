@@ -45,8 +45,24 @@ export interface CertificateVerification {
  * deliberately omits email and the detailed proctoring log to avoid
  * leaking personal data on a public /verify page.
  */
+/**
+ * Normalizes a scanned/pasted certificate ID before lookup. PDFs, QR readers
+ * and messengers frequently substitute the ASCII hyphen "-" with look-alike
+ * Unicode dashes (minus sign U+2212, en/em dash, non-breaking hyphen, figure
+ * dash). Without this, a perfectly real ID like "SKILL-5M8ZU0" fails to match
+ * because the user actually pasted "SKILL−5M8ZU0". We also strip whitespace
+ * and uppercase, since IDs are stored uppercased.
+ */
+function normalizeCertificateId(raw: string): string {
+  return raw
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-') // dash look-alikes -> hyphen
+    .replace(/\s+/g, '') // remove any stray spaces
+    .trim()
+    .toUpperCase()
+}
+
 export async function getCertificateById(certificateId: string): Promise<CertificateVerification> {
-  const id = certificateId.trim()
+  const id = normalizeCertificateId(certificateId)
   const invalid: CertificateVerification = {
     valid: false,
     certificateId: null,
@@ -65,7 +81,9 @@ export async function getCertificateById(certificateId: string): Promise<Certifi
     const [row] = await db
       .select()
       .from(testResults)
-      .where(eq(testResults.certificateId, id))
+      // Case-insensitive match (IDs are stored uppercased, but be defensive
+      // against any historical mixed-case rows).
+      .where(eq(sql`upper(${testResults.certificateId})`, id))
       .limit(1)
 
     // A certificate is only "valid" if it exists AND the candidate passed.

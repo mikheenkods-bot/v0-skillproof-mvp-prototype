@@ -354,23 +354,32 @@ export default function SkillProofPage() {
       }))
 
       // Persist result to the database (every attempt, pass or fail).
-      // Прокторинг-лог и integrity-score сохраняются в БД вместе с результатом —
-      // переживают перезапуск сервера (durable), в отличие от in-memory Map.
-      void saveTestResult({
-        certificateId: certId,
-        candidateName: candidateName.trim() || null,
-        candidateEmail: candidateEmail.trim() || null,
-        specialization: specConfig?.name || 'Бухгалтер',
-        score,
-        correctAnswers: correct,
-        totalQuestions: questions.length,
-        passed,
-        isClean,
-        violations: violationCount,
-        integrityScore: proctoring.integrityScore ?? 0,
-        skills,
-        proctoringLog,
-      })
+      // ВАЖНО: ждём завершения записи ДО показа экрана результата. Раньше это был
+      // fire-and-forget (void), и если кандидат быстро закрывал вкладку, сертификат
+      // не успевал сохраниться — затем /verify выдавал «Сертификат не найден».
+      // Прокторинг-лог и integrity-score сохраняются в БД вместе с результатом.
+      try {
+        const saveRes = await saveTestResult({
+          certificateId: certId,
+          candidateName: candidateName.trim() || null,
+          candidateEmail: candidateEmail.trim() || null,
+          specialization: specConfig?.name || 'Бухгалтер',
+          score,
+          correctAnswers: correct,
+          totalQuestions: questions.length,
+          passed,
+          isClean,
+          violations: violationCount,
+          integrityScore: proctoring.integrityScore ?? 0,
+          skills,
+          proctoringLog,
+        })
+        if (!saveRes?.success) {
+          console.error('[v0] saveTestResult returned failure:', saveRes)
+        }
+      } catch (err) {
+        console.error('[v0] saveTestResult threw:', err)
+      }
 
       // Воронка: тест завершён (с признаком прохождения и нарушений).
       void trackEvent('test_completed', {
@@ -733,14 +742,14 @@ export default function SkillProofPage() {
               </div>
 
               <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
-                <h2 className="text-lg font-semibold mb-4">Перед началом</h2>
+                <h2 className="text-lg font-semibold mb-4">Перед ��ачалом</h2>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>
                     В данном разделе будут представлены тесты, которые помогут
                     вашему резюме получить более высокий балл при отборе.
                   </p>
                   <p>
-                    Тесты составлены с применением искусственного интеллекта и
+                    Тесты составлены с примен��нием искусственного интеллекта и
                     направлены на тестирование конкретного навыка.
                   </p>
                 </div>
@@ -816,7 +825,7 @@ export default function SkillProofPage() {
                       className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
                     />
                     <span className="text-sm text-muted-foreground leading-relaxed">
-                      Я даю согласие на обработку моих персональных данных и пе��едачу
+                      Я даю согласие на обработку моих персональных данных и передачу
                       результата тестирования работодателю в соответствии с{' '}
                       <a
                         href="/privacy"
@@ -1216,7 +1225,7 @@ export default function SkillProofPage() {
                       type="text"
                       data-testid="numeric-input"
                       inputMode="numeric"
-                      placeholder="Например: 22000"
+                      placeholder="Введите число"
                       className="max-w-xs text-lg"
                       value={(answers[questions[currentQuestion].id] as string) ?? ''}
                       onChange={(e) => {
@@ -1317,7 +1326,7 @@ export default function SkillProofPage() {
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8 text-pretty">
                     {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS
-                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и о��правлены на платформу «Работа.ру».'
+                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'
                       : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'}
                   </p>
 

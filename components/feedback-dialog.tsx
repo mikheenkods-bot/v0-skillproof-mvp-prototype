@@ -103,6 +103,7 @@ export function FeedbackDialog({
                     <button
                       key={n}
                       type="button"
+                      data-testid={`feedback-rating-${n}`}
                       role="radio"
                       aria-checked={rating === n}
                       aria-label={`${n} из 5`}
@@ -128,6 +129,7 @@ export function FeedbackDialog({
                 <Label htmlFor="feedback-comment">Комментарий (необязательно)</Label>
                 <Textarea
                   id="feedback-comment"
+                  data-testid="feedback-comment"
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   placeholder="Что понравилось, что можно улучшить?"
@@ -146,6 +148,7 @@ export function FeedbackDialog({
             <DialogFooter>
               <Button
                 onClick={handleSubmit}
+                data-testid="feedback-submit"
                 disabled={rating < 1 || status === 'sending'}
                 className="w-full gap-2"
               >

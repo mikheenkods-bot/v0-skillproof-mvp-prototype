@@ -247,15 +247,26 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
     logEvent('consent_given', {}, 'Согласие на прокторинг дано')
   }, [logEvent])
 
-  // Start session
+  // Start session. Идемпотентно: если сессия уже активна (например, на первой
+  // попытке startSession вызывается и в handleConsentAccept, и в handleStartTest),
+  // повторный вызов не плодит дубликат session_start и не сбрасывает startedAt.
   const startSession = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      isActive: true,
-      startedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      lastActivity: Date.now()
-    }))
+    let alreadyActive = false
+    setState(prev => {
+      if (prev.isActive && !prev.isTerminated) {
+        alreadyActive = true
+        return prev
+      }
+      return {
+        ...prev,
+        isActive: true,
+        isTerminated: false,
+        startedAt: Date.now(),
+        lastHeartbeat: Date.now(),
+        lastActivity: Date.now()
+      }
+    })
+    if (alreadyActive) return
     logEvent('session_start', { 
       systemCheck,
       timestamp: Date.now()

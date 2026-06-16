@@ -131,6 +131,52 @@ function clearAnchoredDeadline(): void {
   }
 }
 
+// --- Персистентность прогресса теста (баг: F5 во время теста возвращал на
+// стартовый экран и терял ответы). Снимок привязан к attemptId, поэтому
+// относится строго к текущей попытке; пересдача (новый attemptId) его игнорирует.
+const PROGRESS_KEY = 'skillproof_progress'
+
+interface TestProgressSnapshot {
+  attemptId: string
+  specialization: SpecializationType
+  questionIds: string[]
+  currentQuestion: number
+  answers: Record<string, number | string | number[]>
+  candidateName: string
+  candidateEmail: string
+  attemptNumber: number
+}
+
+function writeProgressSnapshot(snapshot: TestProgressSnapshot): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(snapshot))
+  } catch {
+    /* ignore */
+  }
+}
+
+function readProgressSnapshot(attemptId: string): TestProgressSnapshot | null {
+  if (typeof window === 'undefined' || !attemptId) return null
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY)
+    if (!raw) return null
+    const obj = JSON.parse(raw) as TestProgressSnapshot
+    return obj?.attemptId === attemptId ? obj : null
+  } catch {
+    return null
+  }
+}
+
+function clearProgressSnapshot(): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(PROGRESS_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
   { id: 'tabs', label: 'Закройте лишние вкладки браузера', description: 'Оставьте только эту вкладку' },
@@ -260,11 +306,75 @@ export default function SkillProofPage() {
     }
   }, [])
 
+  // Восстановление прогресса после F5/случайной перезагрузки. Раньше reload во
+  // время теста возвращал кандидата на стартовый экран и терял ответы. Снимок
+  // привязан к attemptId и считается валидным только пока жив дедлайн этой
+  // попытки (иначе время уже вышло — восстанавливать нечего). Запускается один раз.
+  const restoreDoneRef = useRef(false)
+  useEffect(() => {
+    if (restoreDoneRef.current) return
+    if (!attemptId) return
+    restoreDoneRef.current = true
+
+    const snapshot = readProgressSnapshot(attemptId)
+    if (!snapshot) return
+    const deadline = readAnchoredDeadline(attemptId)
+    if (!deadline || deadline <= Date.now()) {
+      // Время попытки истекло — снимок неактуален.
+      clearProgressSnapshot()
+      return
+    }
+
+    // Реконструируем вопросы по сохранённым id из банка специализации
+    // (порядок важен — он совпадает с тем, что видел кандидат).
+    const bank = specializations[snapshot.specialization]?.questions ?? []
+    const byId = new Map(bank.map((q) => [q.id, q]))
+    const restoredQuestions = snapshot.questionIds
+      .map((id) => byId.get(id))
+      .filter((q): q is Question => Boolean(q))
+    if (restoredQuestions.length !== snapshot.questionIds.length) {
+      // Банк изменился — безопаснее не восстанавливать частичный набор.
+      clearProgressSnapshot()
+      return
+    }
+
+    setSpecialization(snapshot.specialization)
+    setQuestions(restoredQuestions)
+    setAnswers(snapshot.answers)
+    setCurrentQuestion(snapshot.currentQuestion)
+    setCandidateName(snapshot.candidateName)
+    setCandidateEmail(snapshot.candidateEmail)
+    setAttemptNumber(snapshot.attemptNumber)
+    setStage('testing')
+    // Прокторинг нужно поднять заново — слушатели не переживают перезагрузку.
+    proctoring.startSession()
+    proctoring.startQuestionTimer()
+  }, [attemptId, proctoring])
+
+  // Сохраняем снимок прогресса при каждом изменении ответов/номера вопроса
+  // во время теста. Дёшево (один localStorage.setItem) и переживает reload.
+  useEffect(() => {
+    if (stage !== 'testing' || !attemptId || !specialization || questions.length === 0) return
+    writeProgressSnapshot({
+      attemptId,
+      specialization,
+      questionIds: questions.map((q) => q.id),
+      currentQuestion,
+      answers,
+      candidateName,
+      candidateEmail,
+      attemptNumber,
+    })
+  }, [stage, attemptId, specialization, questions, currentQuestion, answers, candidateName, candidateEmail, attemptNumber])
+
   // Синхронизация таймера со стадией: на стартовом экране сохранённого дедлайна
   // быть не должно. Это устраняет рассинхрон «таймер жив, а стадия сброшена»
   // после F5 и не даёт устаревшему дедлайну влиять на новую попытку.
   useEffect(() => {
-    if (stage === 'disclaimer') clearAnchoredDeadline()
+    if (stage === 'disclaimer') {
+      clearAnchoredDeadline()
+      clearProgressSnapshot()
+    }
   }, [stage])
 
   // Durable timer: дедлайн привязан к attemptId и хранится в local+session storage.
@@ -325,6 +435,8 @@ export default function SkillProofPage() {
       setAnalysisProgress(100)
       // Таймер больше не нужен — очищаем сохранённый дедлайн.
       clearAnchoredDeadline()
+      // Тест завершён — снимок прогресса больше не нужен.
+      clearProgressSnapshot()
 
       // ДЕТЕРМИНИРОВАННЫЙ ЛОКАЛЬНЫЙ СКОРИНГ — без внешних/платных вызовов.
       // В тесте только multiple_choice и numeric (см. getRandomQuestions),
@@ -404,7 +516,7 @@ export default function SkillProofPage() {
       // ВАЖНО: ждём завершения записи ДО показа экрана результата. Раньше это был
       // fire-and-forget (void), и если кандидат быстро закрывал вкладку, сертификат
       // не успевал сохраниться — затем /verify выдавал «Сертификат не найден».
-      // Прокторинг-лог и integrity-score сох��аняются в БД вместе с результатом.
+      // Прокторинг-лог и integrity-score сохраняются в БД вместе с результатом.
       try {
         const saveRes = await saveTestResult({
           certificateId: certId,
@@ -558,6 +670,12 @@ export default function SkillProofPage() {
     }
     // Новый дедлайн таймера для этой попытки (привязан к attemptId, переживает F5).
     writeAnchoredDeadline(attemptId, Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000)
+    // Активируем прокторинг для КАЖДОЙ попытки. На пересдаче consent-модалка не
+    // показывается повторно, а handleRetake ротирует attemptId → хук пересоздаёт
+    // сессию с isActive:false. Без этого вызова на 2-й попытке слушатели нарушений
+    // не навешивались. startSession идемпотентен — на 1-й попытке (где он уже был
+    // вызван в handleConsentAccept) повторный вызов ничего не дублирует.
+    proctoring.startSession()
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
     proctoring.startQuestionTimer() // Start timing for first question
@@ -587,6 +705,7 @@ export default function SkillProofPage() {
     setIsAnswerLocked(false)
     setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
     clearAnchoredDeadline()
+    clearProgressSnapshot()
     // Пересдача — это НОВАЯ попытка: ротируем attemptId, чтобы лог прокторинга и
     // счётчик нарушений начались с чистого листа (хук пересоздаёт сессию).
     setAttemptId(rotateAttemptId())
@@ -634,6 +753,7 @@ export default function SkillProofPage() {
     proctoring.stopSession()
     proctoring.exitFullscreen()
     clearAnchoredDeadline()
+    clearProgressSnapshot()
     // Выход = отказ от текущей попытки: ротируем attemptId на случай нового захода.
     setAttemptId(rotateAttemptId())
     // Воронка: кандидат вышел из теста до завершения (не завершил).
@@ -789,14 +909,14 @@ export default function SkillProofPage() {
               </div>
 
               <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
-                <h2 className="text-lg font-semibold mb-4">Перед ��ачалом</h2>
+                <h2 className="text-lg font-semibold mb-4">Перед началом</h2>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>
                     В данном разделе будут представлены тесты, которые помогут
                     вашему резюме получить более высокий балл при отборе.
                   </p>
                   <p>
-                    Тесты составлены с примен��нием искусственного интеллекта и
+                    Тесты составлены с применением искусственного интеллекта и
                     направлены на тестирование конкретного навыка.
                   </p>
                 </div>

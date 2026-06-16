@@ -154,7 +154,18 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
     setEnvironmentCheckPassed(true)
     setCapturedPhoto('/placeholder-avatar.png') // Use placeholder
     setCurrentStep('complete')
-  }, [])
+
+    // Stop any partial camera stream so the device light turns off.
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+    }
+
+    // Без этого вызова кандидат «застревал» на экране «Верификация пройдена»:
+    // confirmPhoto завершает поток через onComplete(), а пропуск — нет.
+    setTimeout(() => {
+      onComplete()
+    }, 1500)
+  }, [stream, onComplete])
 
   // Environment scan - check video is working during scan
   useEffect(() => {
@@ -424,14 +435,14 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
                       ) : (
                         <>
                           <CheckCircle2 className="h-4 w-4" />
-                          Лицо обнаружено
+                          Камера активна
                         </>
                       )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 text-foreground text-sm font-medium">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Поиск лица...
+                      Подключение камеры...
                     </div>
                   )}
                 </div>
@@ -687,8 +698,9 @@ export function IdentityVerification({ onComplete, onCancel }: IdentityVerificat
           <div>
             <p className="text-sm font-medium mb-1">Режим усиленного прокторинга</p>
             <p className="text-xs text-muted-foreground">
-              Во время тестирования будет активен контроль камеры. Система отслеживает присутствие 
-              в кадре, посторонних лиц и подозрительную активность. Запись не ведется.
+              Во время тестирования камера остаётся включённой для контроля присутствия. 
+              Дополнительно система отслеживает активность вкладки, копирование и другие 
+              действия. Запись не ведётся.
             </p>
           </div>
         </div>

@@ -49,15 +49,6 @@ export function Header() {
               >
                 ChallengeGate
               </Link>
-              <Link 
-                href="/candidate/cabinet" 
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-primary",
-                  pathname.includes('/cabinet') ? 'text-primary' : 'text-muted-foreground'
-                )}
-              >
-                Личный кабинет
-              </Link>
             </>
           )}
           {!isHome && userRole === 'employer' && (

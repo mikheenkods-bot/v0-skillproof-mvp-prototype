@@ -39,15 +39,28 @@ export function FeedbackDialog({
   const handleSubmit = async () => {
     if (rating < 1) return
     setStatus('sending')
-    const res = await submitFeedback({
-      certificateId,
-      candidateEmail,
-      candidateName,
-      specialization,
-      rating,
-      comment,
-    })
-    setStatus(res.success ? 'done' : 'error')
+    try {
+      // Защита от «вечного спиннера»: если сервер не ответил за 12 секунд
+      // (например, холодный старт базы на проде), показываем ошибку с повтором,
+      // а не блокируем форму бесконечно.
+      const res = await Promise.race([
+        submitFeedback({
+          certificateId,
+          candidateEmail,
+          candidateName,
+          specialization,
+          rating,
+          comment,
+        }),
+        new Promise<{ success: false }>((resolve) =>
+          setTimeout(() => resolve({ success: false }), 12000)
+        ),
+      ])
+      setStatus(res.success ? 'done' : 'error')
+    } catch (error) {
+      console.error('[v0] Feedback submit failed:', error)
+      setStatus('error')
+    }
   }
 
   return (

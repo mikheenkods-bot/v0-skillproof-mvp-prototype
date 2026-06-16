@@ -98,6 +98,26 @@ export function useProctoringV2(options: UseProctoringV2Options = {}) {
   const questionStartTimeRef = useRef<number>(0)
   const lastTextRef = useRef<string>('')
 
+  // Re-seed the session when the attemptId changes (e.g. a retake reuses the
+  // same hook instance). A new attemptId means a brand-new attempt, so counters,
+  // events and the hash chain must reset. Keyed ONLY on attemptId so unrelated
+  // prop changes (specializationId, userId) never wipe an in-progress session.
+  useEffect(() => {
+    setState(prev => {
+      if (prev.attemptId === attemptId) return prev
+      sequenceRef.current = 0
+      lastHashRef.current = 'genesis'
+      return {
+        ...INITIAL_STATE,
+        attemptId,
+        userId: prev.userId,
+        specializationId: prev.specializationId,
+        startedAt: Date.now(),
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attemptId])
+
   // Create and log an event
   const logEvent = useCallback(async (
     eventType: EventType,

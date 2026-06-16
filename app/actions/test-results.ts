@@ -3,12 +3,21 @@
 import { db } from '@/lib/db'
 import { testResults, type NewTestResult } from '@/lib/db/schema'
 import { eq, desc, sql } from 'drizzle-orm'
+import { clampText, normalizeEmail, FIELD_LIMITS } from '@/lib/validation'
 
 export async function saveTestResult(result: NewTestResult) {
   try {
+    // Clamp candidate-supplied free-text fields before persisting.
+    const safe: NewTestResult = {
+      ...result,
+      candidateName: clampText(result.candidateName, FIELD_LIMITS.name),
+      candidateEmail: normalizeEmail(result.candidateEmail),
+      specialization:
+        clampText(result.specialization, FIELD_LIMITS.specialization) ?? result.specialization,
+    }
     const [saved] = await db
       .insert(testResults)
-      .values(result)
+      .values(safe)
       .onConflictDoNothing({ target: testResults.certificateId })
       .returning()
     return { success: true, data: saved }

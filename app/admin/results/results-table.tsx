@@ -18,9 +18,12 @@ import { logoutAdmin } from './auth'
 export function ResultsTable({
   results,
   accessKey,
+  embedded = false,
 }: {
   results: TestResult[]
   accessKey: string
+  /** Когда таблица встроена во вкладку дашборда, скрываем дублирующий заголовок и кнопку выхода. */
+  embedded?: boolean
 }) {
   const [query, setQuery] = useState('')
 
@@ -85,11 +88,13 @@ export function ResultsTable({
   const passedCount = results.filter((r) => r.passed).length
   const flaggedCount = results.filter((r) => !r.isClean).length
 
+  const Wrapper = embedded ? 'div' : 'main'
+
   return (
-    <main className="container mx-auto px-4 py-8 max-w-6xl">
+    <Wrapper className={embedded ? '' : 'container mx-auto px-4 py-8 max-w-6xl'}>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Результаты тестирования</h1>
+          {!embedded && <h1 className="text-2xl font-bold">Результаты тестирования</h1>}
           <p className="text-muted-foreground text-sm">
             Всего записей: {results.length}
           </p>
@@ -111,15 +116,17 @@ export function ResultsTable({
             <FileDown className="h-4 w-4" />
             JSON (API)
           </a>
-          <form action={logoutAdmin}>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              Выйти
-            </button>
-          </form>
+          {!embedded && (
+            <form action={logoutAdmin}>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Выйти
+              </button>
+            </form>
+          )}
         </div>
       </div>
 
@@ -214,6 +221,6 @@ export function ResultsTable({
           </TableBody>
         </Table>
       </div>
-    </main>
+    </Wrapper>
   )
 }

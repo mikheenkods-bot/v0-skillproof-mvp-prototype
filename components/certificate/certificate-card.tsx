@@ -14,6 +14,11 @@ interface CertificateCardProps {
   isClean: boolean
   date: string
   certificateId: string
+  candidateEmail?: string
+  correctAnswers?: number
+  totalQuestions?: number
+  attemptNumber?: number
+  maxAttempts?: number
   onDownload?: () => void
 }
 
@@ -24,6 +29,11 @@ export function CertificateCard({
   isClean,
   date,
   certificateId,
+  candidateEmail = '',
+  correctAnswers = 0,
+  totalQuestions = 0,
+  attemptNumber = 1,
+  maxAttempts = 2,
   onDownload
 }: CertificateCardProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
@@ -48,7 +58,19 @@ export function CertificateCard({
     }
     setDownloading(true)
     try {
-      await downloadCertificatePdf({ candidateName, specialization, score, isClean, date, certificateId })
+      const parsed = new Date(date)
+      await downloadCertificatePdf({
+        certificateId,
+        candidateName,
+        candidateEmail,
+        specialization,
+        score,
+        correctAnswers,
+        totalQuestions,
+        attemptNumber,
+        maxAttempts,
+        date: isNaN(parsed.getTime()) ? new Date() : parsed,
+      })
     } finally {
       setDownloading(false)
     }

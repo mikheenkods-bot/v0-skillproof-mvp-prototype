@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { feedback, type NewFeedbackRow } from '@/lib/db/schema'
+import { clampText, normalizeEmail, FIELD_LIMITS } from '@/lib/validation'
 
 /**
  * Stores candidate feedback (1–5 rating + optional comment) submitted from the
@@ -22,12 +23,12 @@ export async function submitFeedback(input: {
 
   try {
     const row: NewFeedbackRow = {
-      certificateId: input.certificateId?.trim() || null,
-      candidateEmail: input.candidateEmail?.trim().toLowerCase() || null,
-      candidateName: input.candidateName?.trim() || null,
-      specialization: input.specialization?.trim() || null,
+      certificateId: clampText(input.certificateId, FIELD_LIMITS.certificateId),
+      candidateEmail: normalizeEmail(input.candidateEmail),
+      candidateName: clampText(input.candidateName, FIELD_LIMITS.name),
+      specialization: clampText(input.specialization, FIELD_LIMITS.specialization),
       rating,
-      comment: input.comment?.trim() || null,
+      comment: clampText(input.comment, FIELD_LIMITS.comment),
     }
     await db.insert(feedback).values(row)
     return { success: true }

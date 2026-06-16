@@ -54,6 +54,83 @@ import {
 
 type Stage = 'disclaimer' | 'already-completed' | 'consent' | 'preparation' | 'specialization' | 'testing' | 'analyzing' | 'result'
 
+// --- Стабильный идентификатор попытки и устойчивый таймер ---------------------
+// attemptId хранится в sessionStorage: переживает F5 в той же вкладке (лог
+// прокторинга и счётчик нарушений НЕ дробятся), но новая вкладка = новая попытка.
+const ATTEMPT_ID_KEY = 'skillproof_attempt_id'
+// Дедлайн таймера привязан к attemptId. Дублируем в sessionStorage, чтобы очистка
+// одного только localStorage не позволяла «выпросить» свежие 30 минут.
+const TIMER_KEY = 'skillproof_deadline'
+const TIMER_BACKUP_KEY = 'skillproof_deadline_bak'
+
+function newAttemptId(): string {
+  return `skillproof-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function getOrCreateAttemptId(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    let id = sessionStorage.getItem(ATTEMPT_ID_KEY)
+    if (!id) {
+      id = newAttemptId()
+      sessionStorage.setItem(ATTEMPT_ID_KEY, id)
+    }
+    return id
+  } catch {
+    return newAttemptId()
+  }
+}
+
+function rotateAttemptId(): string {
+  const id = newAttemptId()
+  try {
+    sessionStorage.setItem(ATTEMPT_ID_KEY, id)
+  } catch {
+    /* ignore */
+  }
+  return id
+}
+
+function parseAnchoredDeadline(raw: string | null, attemptId: string): number {
+  if (!raw) return 0
+  try {
+    const obj = JSON.parse(raw)
+    return obj?.attemptId === attemptId ? Number(obj.deadline) || 0 : 0
+  } catch {
+    return 0
+  }
+}
+
+// Возвращает дедлайн ТЕКУЩЕЙ попытки. Проверяет и localStorage, и sessionStorage,
+// чтобы очистка одного хранилища не сбрасывала отсчёт.
+function readAnchoredDeadline(attemptId: string): number {
+  if (typeof window === 'undefined' || !attemptId) return 0
+  const local = parseAnchoredDeadline(localStorage.getItem(TIMER_KEY), attemptId)
+  if (local) return local
+  return parseAnchoredDeadline(sessionStorage.getItem(TIMER_BACKUP_KEY), attemptId)
+}
+
+function writeAnchoredDeadline(attemptId: string, deadline: number): void {
+  if (typeof window === 'undefined') return
+  const value = JSON.stringify({ attemptId, deadline })
+  try {
+    localStorage.setItem(TIMER_KEY, value)
+    sessionStorage.setItem(TIMER_BACKUP_KEY, value)
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearAnchoredDeadline(): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(TIMER_KEY)
+    sessionStorage.removeItem(TIMER_BACKUP_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 const preparationChecklist = [
   { id: 'programs', label: 'Закройте все сторонние программы', description: 'Мессенджеры, браузерные расширения AI' },
   { id: 'tabs', label: 'Закройте лишние вкладки браузера', description: 'Оставьте только эту вкладку' },
@@ -92,6 +169,8 @@ export default function SkillProofPage() {
   const [showExitConfirm, setShowExitConfirm] = useState(false)
   // Статус генерации PDF-сертификата.
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'generating'>('idle')
+  // Стабильный идентификатор попытки (переживает F5; ротируется при пересдаче).
+  const [attemptId, setAttemptId] = useState<string>(() => getOrCreateAttemptId())
 
   // Questions are randomized per attempt (set in handleStartTest), so each
   // candidate and each retry gets a different set and order of questions.
@@ -100,7 +179,7 @@ export default function SkillProofPage() {
 
   // New proctoring v2 system
   const proctoring = useProctoringV2({
-    attemptId: `skillproof-${Date.now()}`,
+    attemptId,
     userId: 'current-user',
     specializationId: specialization || 'general',
     maxViolations: 3,
@@ -129,21 +208,30 @@ export default function SkillProofPage() {
     }
   })
 
-  // Durable timer: храним АБСОЛЮТНЫЙ дедлайн (мс) в localStorage, а не «оставшиеся
-  // секунды». Перезагрузка (F5) не сбрасывает таймер — оставшееся время всегда
-  // вычисляется от дедлайна. По истечении — переход к анализу.
-  const TIMER_KEY = 'skillproof_deadline'
+  // Гарантируем наличие attemptId на клиенте (SSR-инициализатор отдаёт '').
+  useEffect(() => {
+    if (!attemptId) setAttemptId(getOrCreateAttemptId())
+  }, [attemptId])
 
-  // Timer effect
+  // Синхронизация таймера со стадией: на стартовом экране сохранённого дедлайна
+  // быть не должно. Это устраняет рассинхрон «таймер жив, а стадия сброшена»
+  // после F5 и не даёт устаревшему дедлайну влиять на новую попытку.
+  useEffect(() => {
+    if (stage === 'disclaimer') clearAnchoredDeadline()
+  }, [stage])
+
+  // Durable timer: дедлайн привязан к attemptId и хранится в local+session storage.
+  // F5 не сбрасывает отсчёт; очистка одного хранилища не выдаёт свежие 30 минут.
   useEffect(() => {
     if (stage !== 'testing') return
     if (proctoring.isTerminated) return
 
-    // Берём дедлайн из localStorage; если его нет (первый вход в testing) — создаём.
-    let deadline = Number(localStorage.getItem(TIMER_KEY) || 0)
-    if (!deadline || Number.isNaN(deadline) || deadline < Date.now()) {
+    // Дедлайн уже выставлен в handleStartTest. Если его нет (прямой вход) —
+    // создаём один раз для ЭТОЙ попытки.
+    let deadline = readAnchoredDeadline(attemptId)
+    if (!deadline) {
       deadline = Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000
-      localStorage.setItem(TIMER_KEY, String(deadline))
+      writeAnchoredDeadline(attemptId, deadline)
     }
 
     const tick = () => {
@@ -151,7 +239,7 @@ export default function SkillProofPage() {
       setTimeRemaining(remaining)
       if (remaining <= 0) {
         clearInterval(timer)
-        localStorage.removeItem(TIMER_KEY)
+        clearAnchoredDeadline()
         setStage('analyzing')
       }
     }
@@ -159,7 +247,7 @@ export default function SkillProofPage() {
     const timer = setInterval(tick, 1000)
 
     return () => clearInterval(timer)
-  }, [stage, proctoring.isTerminated])
+  }, [stage, proctoring.isTerminated, attemptId])
 
   // Analysis effect - calculate real score and persist results.
   // Runs exactly once per "analyzing" stage. The heavy work (scoring, DB save,
@@ -189,7 +277,7 @@ export default function SkillProofPage() {
       clearInterval(interval)
       setAnalysisProgress(100)
       // Таймер больше не нужен — очищаем сохранённый дедлайн.
-      localStorage.removeItem(TIMER_KEY)
+      clearAnchoredDeadline()
 
       // ДЕТЕРМИНИРОВАННЫЙ ЛОКАЛЬНЫЙ СКОРИНГ — без внешних/платных вызовов.
       // В тесте только multiple_choice и numeric (см. getRandomQuestions),
@@ -412,11 +500,8 @@ export default function SkillProofPage() {
     if (activeSpec) {
       setQuestions(getRandomQuestions(activeSpec))
     }
-    // Новый дедлайн таймера для этой попытки (durable, переживает F5).
-    localStorage.setItem(
-      TIMER_KEY,
-      String(Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000)
-    )
+    // Новый дедлайн таймера для этой попытки (привязан к attemptId, переживает F5).
+    writeAnchoredDeadline(attemptId, Date.now() + TEST_CONFIG.DURATION_MINUTES * 60 * 1000)
     // Request fullscreen when starting test
     proctoring.enterFullscreen()
     proctoring.startQuestionTimer() // Start timing for first question
@@ -445,7 +530,10 @@ export default function SkillProofPage() {
     setShowExplanation(false)
     setIsAnswerLocked(false)
     setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
-    localStorage.removeItem(TIMER_KEY)
+    clearAnchoredDeadline()
+    // Пересдача — это НОВАЯ попытка: ротируем attemptId, чтобы лог прокторинга и
+    // счётчик нарушений начались с чистого листа (хук пересоздаёт сессию).
+    setAttemptId(rotateAttemptId())
     setAnalysisProgress(0)
   }
 
@@ -489,7 +577,9 @@ export default function SkillProofPage() {
     setShowExitConfirm(false)
     proctoring.stopSession()
     proctoring.exitFullscreen()
-    localStorage.removeItem(TIMER_KEY)
+    clearAnchoredDeadline()
+    // Выход = отказ от текущей попытки: ротируем attemptId на случай нового захода.
+    setAttemptId(rotateAttemptId())
     // Воронка: кандидат вышел из теста до завершения (не завершил).
     void trackEvent('test_abandoned', {
       email: candidateEmail,
@@ -695,6 +785,7 @@ export default function SkillProofPage() {
                       onChange={(e) => setCandidateName(e.target.value)}
                       placeholder="Иван Иванов"
                       autoComplete="name"
+                      maxLength={120}
                     />
                   </div>
                   <div className="space-y-2">
@@ -707,6 +798,7 @@ export default function SkillProofPage() {
                       onChange={(e) => setCandidateEmail(e.target.value)}
                       placeholder="ivan@example.com"
                       autoComplete="email"
+                      maxLength={254}
                     />
                   </div>
 

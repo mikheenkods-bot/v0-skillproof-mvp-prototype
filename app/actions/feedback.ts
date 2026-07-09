@@ -3,7 +3,8 @@
 import { neon } from '@neondatabase/serverless'
 import { db } from '@/lib/db'
 import { feedback, type NewFeedbackRow } from '@/lib/db/schema'
-import { clampText, normalizeEmail, FIELD_LIMITS } from '@/lib/validation'
+import { clampText, clampRating, FIELD_LIMITS } from '@/lib/validation'
+import { checkPin, computePinLookup } from '@/lib/pin'
 
 // Raw SQL client for idempotent DDL. This project has no migration step, so the
 // `feedback` table can be absent on whatever database a deployment connects to
@@ -21,8 +22,7 @@ async function ensureFeedbackTable() {
     CREATE TABLE IF NOT EXISTS feedback (
       id serial PRIMARY KEY,
       certificate_id text,
-      candidate_email text,
-      candidate_name text,
+      pin_lookup text,
       specialization text,
       rating integer NOT NULL,
       comment text,
@@ -61,21 +61,30 @@ function isMissingTableError(error: unknown): boolean {
  */
 export async function submitFeedback(input: {
   certificateId?: string | null
-  candidateEmail?: string | null
-  candidateName?: string | null
+  pin?: string | null
   specialization?: string | null
   rating: number
   comment?: string | null
 }) {
-  const rating = Math.round(Number(input.rating))
-  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+  const rating = clampRating(input.rating)
+  if (rating === null) {
     return { success: false, error: 'Оценка должна быть от 1 до 5' }
+  }
+
+  // Optionally link the feedback to the anonymous candidate via PIN lookup.
+  // Never store the raw PIN.
+  let pinLookup: string | null = null
+  if (input.pin && checkPin(input.pin) === null) {
+    try {
+      pinLookup = computePinLookup(input.pin)
+    } catch {
+      pinLookup = null
+    }
   }
 
   const row: NewFeedbackRow = {
     certificateId: clampText(input.certificateId, FIELD_LIMITS.certificateId),
-    candidateEmail: normalizeEmail(input.candidateEmail),
-    candidateName: clampText(input.candidateName, FIELD_LIMITS.name),
+    pinLookup,
     specialization: clampText(input.specialization, FIELD_LIMITS.specialization),
     rating,
     comment: clampText(input.comment, FIELD_LIMITS.comment),

@@ -127,3 +127,18 @@ export const feedback = pgTable('feedback', {
 
 export type FeedbackRow = typeof feedback.$inferSelect
 export type NewFeedbackRow = typeof feedback.$inferInsert
+
+/**
+ * Durable rate-limit buckets. A process-memory limiter resets on every
+ * serverless cold start, which would neuter brute-force protection on the
+ * PIN endpoints (only 10 000 combinations). One row = one fixed window per key
+ * (e.g. "pin:register:<ip>").
+ */
+export const rateLimits = pgTable('rate_limits', {
+  bucketKey: text('bucket_key').primaryKey(),
+  count: integer('count').notNull().default(0),
+  resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type RateLimitRow = typeof rateLimits.$inferSelect

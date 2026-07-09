@@ -7,13 +7,21 @@
  */
 
 export const FIELD_LIMITS = {
-  name: 120,
-  email: 254, // RFC 5321 max
   specialization: 64,
   certificateId: 64,
   comment: 2000,
   attemptId: 100,
+  description: 500,
 } as const
+
+/** Coerces an unknown to an integer rating within [min, max], or null. */
+export function clampRating(value: unknown, min = 1, max = 5): number | null {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return null
+  const r = Math.round(n)
+  if (r < min || r > max) return null
+  return r
+}
 
 /** Trims and clamps a free-text value. Non-strings / empties become null. */
 export function clampText(value: unknown, max: number): string | null {
@@ -21,19 +29,4 @@ export function clampText(value: unknown, max: number): string | null {
   const trimmed = value.trim()
   if (!trimmed) return null
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed
-}
-
-/** Basic, conservative email shape check. */
-export function isValidEmail(value: string): boolean {
-  if (value.length > FIELD_LIMITS.email) return false
-  // Single @, non-empty local part, a dot in the domain, no whitespace.
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-/** Normalizes an email: trims, lowercases, clamps. Returns null if invalid. */
-export function normalizeEmail(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const normalized = value.trim().toLowerCase()
-  if (!normalized || !isValidEmail(normalized)) return null
-  return normalized
 }

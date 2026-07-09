@@ -2,7 +2,7 @@
 
 import { db } from '@/lib/db'
 import { analyticsEvents, type NewAnalyticsEventRow } from '@/lib/db/schema'
-import { clampText, normalizeEmail, FIELD_LIMITS } from '@/lib/validation'
+import { clampText, FIELD_LIMITS } from '@/lib/validation'
 
 export type AnalyticsEventType =
   | 'visit'
@@ -39,7 +39,6 @@ export async function trackEvent(
   eventType: AnalyticsEventType,
   data: {
     attemptId?: string | null
-    email?: string | null
     specialization?: string | null
     payload?: Record<string, unknown>
   } = {}
@@ -53,7 +52,6 @@ export async function trackEvent(
     const row: NewAnalyticsEventRow = {
       eventType,
       attemptId: clampText(data.attemptId, FIELD_LIMITS.attemptId),
-      email: normalizeEmail(data.email),
       specialization: clampText(data.specialization, FIELD_LIMITS.specialization),
       payload: sanitizePayload(data.payload),
     }

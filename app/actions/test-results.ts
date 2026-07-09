@@ -3,8 +3,9 @@
 import { db } from '@/lib/db'
 import { testResults, candidates, type NewTestResult } from '@/lib/db/schema'
 import { eq, desc, sql } from 'drizzle-orm'
-import { clampText, FIELD_LIMITS } from '@/lib/validation'
+import { clampText, clampInt, isValidCertificateId, FIELD_LIMITS } from '@/lib/validation'
 import { checkPin, computePinLookup } from '@/lib/pin'
+import { TEST_CONFIG } from '@/lib/demo-data'
 
 export interface SaveTestResultInput {
   certificateId: string
@@ -32,6 +33,22 @@ export async function saveTestResult(input: SaveTestResultInput) {
       return { success: false, error: 'Некорректный код' }
     }
 
+    // This action is called from an untrusted browser, so every numeric field
+    // is clamped to a sane range and mutually consistent before it is stored.
+    // This prevents forging impossible results (e.g. passed=true with 0 correct
+    // answers, a 9999% score, or a negative violation count).
+    if (!isValidCertificateId(input.certificateId)) {
+      return { success: false, error: 'Некорректный идентификатор сертификата' }
+    }
+    const totalQuestions = clampInt(input.totalQuestions, 1, 500)
+    const correctAnswers = clampInt(input.correctAnswers, 0, totalQuestions)
+    const score = clampInt(input.score, 0, 100)
+    const integrityScore = clampInt(input.integrityScore, 0, 100)
+    const violations = clampInt(input.violations, 0, 100_000)
+    // `passed` is authoritative only if it is consistent with the number of
+    // correct answers; a client cannot claim a pass below the threshold.
+    const passed = input.passed === true && correctAnswers >= TEST_CONFIG.PASS_THRESHOLD
+
     let pinLookup: string
     try {
       pinLookup = computePinLookup(input.pin)
@@ -55,13 +72,13 @@ export async function saveTestResult(input: SaveTestResultInput) {
       pinLookup,
       specialization:
         clampText(input.specialization, FIELD_LIMITS.specialization) ?? input.specialization,
-      score: input.score,
-      correctAnswers: input.correctAnswers,
-      totalQuestions: input.totalQuestions,
-      passed: input.passed,
-      isClean: input.isClean,
-      violations: input.violations,
-      integrityScore: input.integrityScore,
+      score,
+      correctAnswers,
+      totalQuestions,
+      passed,
+      isClean: input.isClean === true,
+      violations,
+      integrityScore,
       skills: input.skills as NewTestResult['skills'],
       proctoringLog: input.proctoringLog as NewTestResult['proctoringLog'],
     }

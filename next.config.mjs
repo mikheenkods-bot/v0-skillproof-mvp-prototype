@@ -4,8 +4,10 @@ const nextConfig = {
   // dynamic worker that the bundler can't resolve during the SSR pass.
   // Keeping them external means they're required at runtime instead of bundled.
   serverExternalPackages: ['jspdf', 'qrcode'],
+  // Fail the production build on type errors instead of silently shipping them —
+  // masked type errors can hide real (including security-relevant) bugs.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   images: {
     unoptimized: true,
@@ -28,36 +30,16 @@ const nextConfig = {
         ],
       },
       {
+        // The embed page is framed by rabota.ru. Framing is controlled by the
+        // CSP `frame-ancestors` allowlist below. The embed's own scripts call
+        // /api on the SAME origin, so no cross-origin (CORS) grant is needed —
+        // and we deliberately do NOT send `Access-Control-Allow-Origin: *`, which
+        // would let any third-party website script-call our API from a browser.
         source: '/embed/:path*',
         headers: [
           {
-            key: 'X-Frame-Options',
-            value: 'ALLOWALL',
-          },
-          {
             key: 'Content-Security-Policy',
             value: "frame-ancestors 'self' https://www.rabota.ru https://rabota.ru https://*.rabota.ru http://localhost:*",
-          },
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-        ],
-      },
-      {
-        source: '/api/:path*',
-        headers: [
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization, X-Requested-With',
           },
         ],
       },

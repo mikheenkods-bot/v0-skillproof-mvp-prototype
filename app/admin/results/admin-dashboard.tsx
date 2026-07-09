@@ -346,8 +346,9 @@ function FeedbackTab({ feedback }: { feedback: DashboardData['feedback'] }) {
                     <p className="text-sm italic text-muted-foreground">Без комментария</p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                    {f.candidateName ? <span>{f.candidateName}</span> : null}
-                    {f.candidateEmail ? <span>{f.candidateEmail}</span> : null}
+                    {f.certificateId ? (
+                      <span className="font-mono">{f.certificateId}</span>
+                    ) : null}
                     {f.specialization ? <span>{f.specialization}</span> : null}
                   </div>
                 </li>

@@ -175,6 +175,8 @@ export interface RecoveredCertificate {
   certificateId: string
   specialization: string
   score: number
+  correctAnswers: number
+  totalQuestions: number
   isClean: boolean
   issuedAt: string | null
 }
@@ -215,6 +217,8 @@ export async function getCertificatesByPin(pin: string): Promise<RecoverCertific
           certificateId: testResults.certificateId,
           specialization: testResults.specialization,
           score: testResults.score,
+          correctAnswers: testResults.correctAnswers,
+          totalQuestions: testResults.totalQuestions,
           isClean: testResults.isClean,
           createdAt: testResults.createdAt,
         })
@@ -227,6 +231,8 @@ export async function getCertificatesByPin(pin: string): Promise<RecoverCertific
           certificateId: r.certificateId,
           specialization: r.specialization,
           score: r.score,
+          correctAnswers: r.correctAnswers,
+          totalQuestions: r.totalQuestions,
           isClean: r.isClean,
           issuedAt: r.createdAt ? new Date(r.createdAt).toISOString() : null,
         })),

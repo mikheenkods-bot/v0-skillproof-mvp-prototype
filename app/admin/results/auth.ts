@@ -2,8 +2,13 @@
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { rateLimit, getClientIp, withMinimumDuration } from '@/lib/rate-limit'
 
 const SESSION_COOKIE = 'admin_session'
+
+// Flatten timing between "wrong key" and "right key" and cap attempts per IP so
+// the admin key can't be brute-forced.
+const LOGIN_MIN_RESPONSE_MS = 400
 
 // Создаёт детерминированный токен сессии на основе секретного ключа.
 // Так в cookie не хранится сам ключ доступа, а проверка не требует БД.

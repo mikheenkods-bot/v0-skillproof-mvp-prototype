@@ -19,15 +19,13 @@ import { submitFeedback } from '@/app/actions/feedback'
 
 interface FeedbackDialogProps {
   certificateId?: string | null
-  candidateEmail?: string | null
-  candidateName?: string | null
+  pin?: string | null
   specialization?: string | null
 }
 
 export function FeedbackDialog({
   certificateId,
-  candidateEmail,
-  candidateName,
+  pin,
   specialization,
 }: FeedbackDialogProps) {
   const [open, setOpen] = useState(false)
@@ -42,8 +40,7 @@ export function FeedbackDialog({
     try {
       const res = await submitFeedback({
         certificateId,
-        candidateEmail,
-        candidateName,
+        pin,
         specialization,
         rating,
         comment,

@@ -52,7 +52,6 @@ import {
   Info,
   Camera,
   ShieldCheck,
-  Mail,
   Award,
   Download
 } from 'lucide-react'
@@ -588,7 +587,7 @@ export default function SkillProofPage() {
   }, [proctoring.violations.length, proctoring.violations, mediaEnabled.camera, media])
 
   // Воронка: фиксируем заход на страницу тестирования один раз за загрузку.
-  // Это даёт администратору метрику «сколько человек заходило на сайт».
+  // Это даёт администратору метрику «скол��ко человек заходило на сайт».
   useEffect(() => {
     void trackEvent('visit', { specialization: 'skillproof' })
     // eslint-disable-next-line react-hooks/exhaustive-deps

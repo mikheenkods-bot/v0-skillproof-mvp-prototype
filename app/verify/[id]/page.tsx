@@ -64,10 +64,10 @@ export default async function VerifyCertificatePage({
                   <dt className="text-muted-foreground">ID сертификата</dt>
                   <dd className="font-mono font-medium">{cert.certificateId}</dd>
                 </div>
-                {cert.candidateName && (
+                {cert.candidateLabel && (
                   <div className="flex items-center justify-between gap-4">
                     <dt className="text-muted-foreground">Владелец</dt>
-                    <dd className="font-medium">{cert.candidateName}</dd>
+                    <dd className="font-medium">{cert.candidateLabel}</dd>
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-4">

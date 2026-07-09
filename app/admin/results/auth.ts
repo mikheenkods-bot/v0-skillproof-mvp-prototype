@@ -43,13 +43,27 @@ export async function loginAdmin(
     return { error: 'Доступ не настроен: переменная RESULTS_API_KEY не задана.' }
   }
 
-  const key = String(formData.get('key') || '').trim()
-  if (!key) {
-    return { error: 'Введите ключ доступа.' }
-  }
-  if (key !== requiredKey) {
-    return { error: 'Неверный ключ доступа. Попробуйте снова.' }
-  }
+  // Brute-force protection: max 8 attempts per IP per 10 minutes. Evaluated
+  // before the key check so failed guesses count. `redirect` throws, so it must
+  // run AFTER the guarded block, not inside it.
+  const gate = await withMinimumDuration(LOGIN_MIN_RESPONSE_MS, async () => {
+    const ip = await getClientIp()
+    const rl = await rateLimit(`admin:login:${ip}`, 8, 600)
+    if (!rl.ok) {
+      return { error: 'Слишком много попыток входа. Повторите позже.' }
+    }
+
+    const key = String(formData.get('key') || '').trim()
+    if (!key) {
+      return { error: 'Введите ключ доступа.' }
+    }
+    if (key !== requiredKey) {
+      return { error: 'Неверный ключ доступа. Попробуйте снова.' }
+    }
+    return { error: undefined }
+  })
+
+  if (gate.error) return { error: gate.error }
 
   const store = await cookies()
   store.set(SESSION_COOKIE, await sessionToken(requiredKey), {

@@ -25,11 +25,16 @@ import {
 } from '@/lib/demo-data'
 import { cn } from '@/lib/utils'
 import { E2E_TEST_MODE } from '@/lib/e2e'
-import { saveTestResult, getCompletionByEmail, type ExistingCompletion } from '@/app/actions/test-results'
-import { sendResultEmail } from '@/app/actions/send-result-email'
+import { saveTestResult } from '@/app/actions/test-results'
+import {
+  registerPin,
+  getCompletionByPin,
+  type ExistingCompletion,
+} from '@/app/actions/pin'
 import { trackEvent } from '@/app/actions/analytics'
 import { downloadCertificatePdf } from '@/lib/certificate-pdf'
 import { FeedbackDialog } from '@/components/feedback-dialog'
+import { CertificateRecovery } from '@/components/certificate-recovery'
 import { RabotaUploadInstruction } from '@/components/rabota-upload-instruction'
 import {
   Shield,
@@ -47,7 +52,6 @@ import {
   Info,
   Camera,
   ShieldCheck,
-  Mail,
   Award,
   Download
 } from 'lucide-react'
@@ -142,8 +146,7 @@ interface TestProgressSnapshot {
   questionIds: string[]
   currentQuestion: number
   answers: Record<string, number | string | number[]>
-  candidateName: string
-  candidateEmail: string
+  pin: string
   attemptNumber: number
 }
 
@@ -186,8 +189,11 @@ const preparationChecklist = [
 export default function SkillProofPage() {
   const router = useRouter()
   const [stage, setStage] = useState<Stage>('disclaimer')
-  const [candidateName, setCandidateName] = useState('')
-  const [candidateEmail, setCandidateEmail] = useState('')
+  // Анонимная идентификация: 4-значный PIN вместо имени/e-mail.
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
+  const [pinSuggestions, setPinSuggestions] = useState<string[]>([])
+  const [registeringPin, setRegisteringPin] = useState(false)
   const [specialization, setSpecialization] = useState<SpecializationType | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number | string | number[]>>({})
@@ -202,13 +208,12 @@ export default function SkillProofPage() {
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0)
   const [certificateId, setCertificateId] = useState('')
   const [attemptNumber, setAttemptNumber] = useState(1)
-  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [shake, setShake] = useState(false)
   const [showExplanation, setShowExplanation] = useState(false)
   const [isAnswerLocked, setIsAnswerLocked] = useState(false)
   const [mediaEnabled, setMediaEnabled] = useState({ camera: false, mic: false })
   const [lastSnapshotReason, setLastSnapshotReason] = useState<string | undefined>()
-  // Server-side repeat-attempt gate (by email — VPN-proof, unlike an IP check).
+  // Server-side repeat-attempt gate (by anonymous PIN — VPN-proof, no PII).
   const [checkingCompletion, setCheckingCompletion] = useState(false)
   const [existingCompletion, setExistingCompletion] = useState<ExistingCompletion | null>(null)
   // Подтверждение выхода из теста до его завершения.
@@ -342,8 +347,7 @@ export default function SkillProofPage() {
     setQuestions(restoredQuestions)
     setAnswers(snapshot.answers)
     setCurrentQuestion(snapshot.currentQuestion)
-    setCandidateName(snapshot.candidateName)
-    setCandidateEmail(snapshot.candidateEmail)
+    setPin(snapshot.pin)
     setAttemptNumber(snapshot.attemptNumber)
     setStage('testing')
     // Прокторинг нужно поднять заново — слушатели не переживают перезагрузку.
@@ -361,11 +365,10 @@ export default function SkillProofPage() {
       questionIds: questions.map((q) => q.id),
       currentQuestion,
       answers,
-      candidateName,
-      candidateEmail,
+      pin,
       attemptNumber,
     })
-  }, [stage, attemptId, specialization, questions, currentQuestion, answers, candidateName, candidateEmail, attemptNumber])
+  }, [stage, attemptId, specialization, questions, currentQuestion, answers, pin, attemptNumber])
 
   // Синхронизация таймера со стадией: на стартовом экране сохранённого дедлайна
   // быть не должно. Это устраняет рассинхрон «таймер жив, а стадия сброшена»
@@ -520,8 +523,7 @@ export default function SkillProofPage() {
       try {
         const saveRes = await saveTestResult({
           certificateId: certId,
-          candidateName: candidateName.trim() || null,
-          candidateEmail: candidateEmail.trim() || null,
+          pin,
           specialization: specConfig?.name || 'Бухгалтер',
           score,
           correctAnswers: correct,
@@ -541,25 +543,12 @@ export default function SkillProofPage() {
       }
 
       // Воронка: тест завершён (с признаком прохождения и нарушений).
+      // Никаких ПДн — только обезличенная агрегированная статистика.
       void trackEvent('test_completed', {
-        email: candidateEmail,
+        attemptId,
         specialization: specConfig?.name || 'skillproof',
         payload: { score, passed, violations: violationCount },
       })
-
-      // Email the candidate a copy of their result (fire-and-forget).
-      if (candidateEmail.trim()) {
-        setEmailStatus('sending')
-        sendResultEmail({
-          certificateId: certId,
-          candidateName: candidateName.trim(),
-          candidateEmail: candidateEmail.trim(),
-          specialization: specConfig?.name || 'Бухгалтер',
-          score,
-        })
-          .then((res) => setEmailStatus(res?.ok ? 'sent' : 'error'))
-          .catch(() => setEmailStatus('error'))
-      }
 
       setStage('result')
       if (isClean && passed) {
@@ -598,7 +587,7 @@ export default function SkillProofPage() {
   }, [proctoring.violations.length, proctoring.violations, mediaEnabled.camera, media])
 
   // Воронка: фиксируем заход на страницу тестирования один раз за загрузку.
-  // Это даёт администратору метрику «сколько человек заходило на сайт».
+  // Это даёт администратору метрику «скол��ко человек заходило на сайт».
   useEffect(() => {
     void trackEvent('visit', { specialization: 'skillproof' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -630,33 +619,60 @@ export default function SkillProofPage() {
     setStage('preparation')
   }
 
-  // Disclaimer "Начать тестирование" handler: first check the server whether
-  // this email has already completed the test. This is the authoritative gate
-  // against repeat attempts and can't be bypassed with a VPN.
+  // Disclaimer "Начать тестирование" handler. Anonymous flow by 4-digit PIN:
+  //  1. Gate by getCompletionByPin — how many attempts this PIN already has.
+  //     - exhausted (>= MAX) -> 'already-completed'.
+  //     - 1..MAX-1           -> returning candidate, resume/retake (row exists).
+  //  2. Zero attempts -> registerPin:
+  //     - success  -> brand-new candidate, attempt 1.
+  //     - taken    -> «код занят», suggest free alternatives and stop.
+  // The PIN itself is the secret credential; it is never stored in clear.
   const handleBeginAssessment = async () => {
-    if (checkingCompletion) return
+    if (checkingCompletion || registeringPin) return
+    setPinError(null)
+    setPinSuggestions([])
+
+    // Local format/weak guard for instant feedback (server re-validates).
+    if (!/^[0-9]{4}$/.test(pin)) {
+      setPinError('Код должен состоять ровно из 4 цифр.')
+      return
+    }
+
     setCheckingCompletion(true)
     try {
-      const completion = await getCompletionByEmail(candidateEmail)
-      // Кандидату доступно TEST_CONFIG.MAX_ATTEMPTS попыток (идентификация по email).
-      // Блокируем ТОЛЬКО когда попытки исчерпаны. Если осталась хотя бы одна —
-      // пропускаем к тесту и продолжаем нумерацию с учётом уже сделанных попыток.
+      const completion = await getCompletionByPin(pin)
       if (completion.completed && completion.attempts >= TEST_CONFIG.MAX_ATTEMPTS) {
         setExistingCompletion(completion)
         setStage('already-completed')
         return
       }
-      // Следующая попытка = число уже сделанных + 1 (для корректной логики пересдачи).
-      setAttemptNumber(completion.attempts + 1)
+      if (completion.attempts >= 1) {
+        // Returning candidate with attempts remaining — candidate row exists.
+        setAttemptNumber(completion.attempts + 1)
+        setStage('consent')
+        setShowConsentModal(true)
+        return
+      }
+
+      // No attempts yet — register this PIN.
+      setRegisteringPin(true)
+      const reg = await registerPin(pin)
+      if (!reg.success) {
+        setPinError(reg.error ?? 'Не удалось использовать этот код.')
+        if (reg.suggestions?.length) setPinSuggestions(reg.suggestions)
+        return
+      }
+      setAttemptNumber(1)
       setStage('consent')
       setShowConsentModal(true)
     } catch (error) {
-      console.error('[v0] completion check failed:', error)
-      // Fail open: never block a candidate because of a transient error.
+      console.error('[v0] begin assessment failed:', error)
+      // Fail open on transient errors: never hard-block a candidate.
       setStage('consent')
       setShowConsentModal(true)
     } finally {
       setCheckingCompletion(false)
+      setRegisteringPin(false)
     }
   }
 
@@ -683,7 +699,7 @@ export default function SkillProofPage() {
     setQuestionStartTime(Date.now())
     // Воронка: кандидат приступил к тесту.
     void trackEvent('test_started', {
-      email: candidateEmail,
+      attemptId,
       specialization: activeSpec || 'skillproof',
     })
   }
@@ -700,14 +716,13 @@ export default function SkillProofPage() {
     setCorrectAnswersCount(0)
     setFinalScore(0)
     setCertificateId('')
-    setEmailStatus('idle')
     setShowExplanation(false)
     setIsAnswerLocked(false)
     setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
     clearAnchoredDeadline()
     clearProgressSnapshot()
     // Пересдача — это НОВАЯ попытка: ротируем attemptId, чтобы лог прокторинга и
-    // счётчик нарушений начались с чистого листа (хук пересоздаёт сессию).
+    // счётчик нарушений начались с чистого л��ста (хук пересоздаёт сессию).
     setAttemptId(rotateAttemptId())
     setAnalysisProgress(0)
   }
@@ -758,7 +773,7 @@ export default function SkillProofPage() {
     setAttemptId(rotateAttemptId())
     // Воронка: кандидат вышел из теста до завершения (не завершил).
     void trackEvent('test_abandoned', {
-      email: candidateEmail,
+      attemptId,
       specialization: specialization || 'skillproof',
       payload: { question: currentQuestion + 1, total: questions.length },
     })
@@ -772,8 +787,6 @@ export default function SkillProofPage() {
     try {
       await downloadCertificatePdf({
         certificateId,
-        candidateName: candidateName.trim(),
-        candidateEmail: candidateEmail.trim(),
         specialization: specConfig?.name || 'Бухгалтер',
         score: finalScore,
         correctAnswers: correctAnswersCount,
@@ -946,54 +959,78 @@ export default function SkillProofPage() {
               </div>
 
               <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
-                <h2 className="text-lg font-semibold mb-1">Ваши данные</h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Результат теста будет привязан к этим данным и передан
-                  работодателю.
+                <h2 className="text-lg font-semibold mb-1">Ваш код доступа</h2>
+                <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                  Придумайте 4-значный код. Он заменяет логин и понадобится, чтобы
+                  позже скачать сертификат. Запомните его — восстановить код
+                  невозможно.
                 </p>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="candidate-name">Имя и фамилия</Label>
+                    <Label htmlFor="candidate-pin">4-значный код</Label>
                     <Input
-                      id="candidate-name"
-                      data-testid="name-input"
-                      value={candidateName}
-                      onChange={(e) => setCandidateName(e.target.value)}
-                      placeholder="Иван Иванов"
-                      autoComplete="name"
-                      maxLength={120}
+                      id="candidate-pin"
+                      data-testid="pin-input"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
+                      maxLength={4}
+                      value={pin}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+                        setPin(digits)
+                        if (pinError) setPinError(null)
+                        if (pinSuggestions.length) setPinSuggestions([])
+                      }}
+                      placeholder="••••"
+                      className="text-center text-2xl tracking-[0.6em] font-mono"
+                      aria-invalid={pinError ? true : undefined}
+                      aria-describedby={pinError ? 'pin-error' : undefined}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="candidate-email">Email</Label>
-                    <Input
-                      id="candidate-email"
-                      data-testid="email-input"
-                      type="email"
-                      value={candidateEmail}
-                      onChange={(e) => setCandidateEmail(e.target.value)}
-                      placeholder="ivan@example.com"
-                      autoComplete="email"
-                      maxLength={254}
-                    />
+                    {pinError && (
+                      <p id="pin-error" role="alert" className="text-sm text-destructive">
+                        {pinError}
+                      </p>
+                    )}
+                    {pinSuggestions.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="text-sm text-muted-foreground">Свободные коды:</span>
+                        {pinSuggestions.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => {
+                              setPin(s)
+                              setPinError(null)
+                              setPinSuggestions([])
+                            }}
+                            className="rounded-md border border-border bg-muted/40 px-2.5 py-1 font-mono text-sm hover:border-primary/50 transition-colors"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Согласие на обработку ПДн (152-ФЗ) — обязательно */}
+                  {/* Персональные данные не собираются. Согласие — только с правилами
+                      тестирования и прокторинга. */}
                   <label
-                    htmlFor="pdn-consent"
+                    htmlFor="rules-consent"
                     className="flex items-start gap-3 rounded-xl border border-border p-4 cursor-pointer hover:border-primary/50 transition-colors"
                   >
                     <input
-                      id="pdn-consent"
-                      data-testid="pdn-consent"
+                      id="rules-consent"
+                      data-testid="rules-consent"
                       type="checkbox"
                       checked={pdnConsent}
                       onChange={(e) => setPdnConsent(e.target.checked)}
                       className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
                     />
                     <span className="text-sm text-muted-foreground leading-relaxed">
-                      Я даю согласие на обработку моих персональных данных и передачу
-                      результата тестирования работодателю в соответствии с{' '}
+                      Я согласен с правилами тестирования и наблюдением системы
+                      прокторинга. Идентификация анонимная по коду, персональные
+                      данные не собираются — подробнее в{' '}
                       <a
                         href="/privacy"
                         target="_blank"
@@ -1001,9 +1038,9 @@ export default function SkillProofPage() {
                         className="text-primary underline underline-offset-2"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        Политикой обработки персональных данных
-                      </a>{' '}
-                      (152-ФЗ).
+                        правилах обработки данных
+                      </a>
+                      .
                     </span>
                   </label>
                 </div>
@@ -1013,10 +1050,15 @@ export default function SkillProofPage() {
                 size="lg"
                 className="w-full"
                 data-testid="begin-button"
-                disabled={checkingCompletion || !pdnConsent || !candidateName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidateEmail.trim())}
+                disabled={
+                  checkingCompletion ||
+                  registeringPin ||
+                  !pdnConsent ||
+                  !/^[0-9]{4}$/.test(pin)
+                }
                 onClick={handleBeginAssessment}
               >
-                {checkingCompletion ? (
+                {checkingCompletion || registeringPin ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Проверка...
@@ -1028,6 +1070,9 @@ export default function SkillProofPage() {
                   </>
                 )}
               </Button>
+
+              {/* Восстановление сертификата по коду (Фаза 3). */}
+              <CertificateRecovery />
             </motion.div>
           )}
 
@@ -1047,13 +1092,18 @@ export default function SkillProofPage() {
                   Вы уже завершили тестирование
                 </h1>
                 <p className="text-muted-foreground leading-relaxed mb-6 text-pretty">
-                  Результаты по адресу{' '}
-                  <span className="font-medium text-foreground">{candidateEmail}</span>{' '}
-                  зафиксированы и переданы работодателю. Повторное прохождение
-                  недоступно.
+                  Результаты по коду{' '}
+                  <span className="font-mono font-medium text-foreground">{pin}</span>{' '}
+                  зафиксированы. Повторное прохождение недоступно.
                 </p>
 
                 <div className="rounded-xl border bg-muted/30 p-5 text-left space-y-3 mb-6">
+                  {existingCompletion?.specialization && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Направление</span>
+                      <span className="font-medium">{existingCompletion.specialization}</span>
+                    </div>
+                  )}
                   {existingCompletion?.completedAt && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Дата прохождения</span>
@@ -1599,21 +1649,19 @@ export default function SkillProofPage() {
                     </div>
                   </div>
 
-                  {/* Email status */}
-                  {candidateEmail.trim() && (
-                    <div className="rounded-xl bg-muted p-4 mb-6 text-left flex items-start gap-3">
-                      <Mail className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                      <div className="text-sm">
-                        <p className="font-medium">Копия на email</p>
-                        <p className="text-muted-foreground">
-                          {emailStatus === 'sending' && `Отправляем сообщение на ${candidateEmail}...`}
-                          {emailStatus === 'sent' && `Сообщение о прохождении отправлено на ${candidateEmail}.`}
-                          {emailStatus === 'error' && `Не удалось отправить письмо на ${candidateEmail}. Результат всё равно сохранён.`}
-                          {emailStatus === 'idle' && `Сообщение будет отправлено на ${candidateEmail}.`}
-                        </p>
-                      </div>
+                  {/* Напоминание о коде: он понадобится для скачивания сертификата позже. */}
+                  <div className="rounded-xl bg-muted p-4 mb-6 text-left flex items-start gap-3">
+                    <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium">Запомните свой код</p>
+                      <p className="text-muted-foreground">
+                        Код{' '}
+                        <span className="font-mono font-medium text-foreground">{pin}</span>{' '}
+                        понадобится, чтобы позже заново скачать сертификат. Восстановить
+                        код невозможно.
+                      </p>
                     </div>
-                  )}
+                  </div>
 
                   {/* Инструкция по загрузке сертификата на «Работа.ру» — рядом с кнопкой скачивания PDF */}
                   {correctAnswersCount >= TEST_CONFIG.PASS_THRESHOLD && certificateId && (
@@ -1626,8 +1674,7 @@ export default function SkillProofPage() {
                   <div className="mb-6">
                     <FeedbackDialog
                       certificateId={certificateId || null}
-                      candidateEmail={candidateEmail.trim() || null}
-                      candidateName={candidateName.trim() || null}
+                      pin={pin || null}
                       specialization={specConfig?.name || null}
                     />
                   </div>

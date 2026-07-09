@@ -1,7 +1,5 @@
 export interface CertificatePdfData {
   certificateId: string
-  candidateName: string
-  candidateEmail: string
   specialization: string
   score: number
   correctAnswers: number
@@ -94,16 +92,19 @@ async function drawCertificate(
   ctx.font = `28px ${sans}`
   ctx.fillText('подтверждает успешное прохождение тестирования навыков', cx, 338)
 
-  // Имя кандидата
+  // Анонимный держатель — номер сертификата (ПДн не выводятся).
+  ctx.fillStyle = COLORS.muted
+  ctx.font = `26px ${sans}`
+  ctx.fillText('Владелец сертификата (анонимный идентификатор)', cx, 420)
   ctx.fillStyle = COLORS.text
-  ctx.font = `bold 70px ${sans}`
-  wrapCenteredText(ctx, data.candidateName || 'Кандидат', cx, 450, W - 360, 78)
+  ctx.font = `bold 60px ${sans}`
+  wrapCenteredText(ctx, data.certificateId, cx, 480, W - 360, 68)
 
   ctx.strokeStyle = COLORS.frame
   ctx.lineWidth = 3
   ctx.beginPath()
-  ctx.moveTo(cx - 300, 500)
-  ctx.lineTo(cx + 300, 500)
+  ctx.moveTo(cx - 300, 520)
+  ctx.lineTo(cx + 300, 520)
   ctx.stroke()
 
   // Специализация
@@ -148,7 +149,6 @@ async function drawCertificate(
   const details: Array<[string, string]> = [
     ['Дата тестирования', dateStr],
     ['Количество попыток', `${data.attemptNumber} из ${data.maxAttempts}`],
-    ['Email участника', data.candidateEmail || '—'],
     ['Уникальный номер сертификата', data.certificateId],
   ]
 

@@ -8,13 +8,11 @@ import { cn } from '@/lib/utils'
 import { downloadCertificatePdf, generateQrDataUrl, getVerifyUrl } from '@/lib/certificate-pdf'
 
 interface CertificateCardProps {
-  candidateName: string
   specialization: string
   score: number
   isClean: boolean
   date: string
   certificateId: string
-  candidateEmail?: string
   correctAnswers?: number
   totalQuestions?: number
   attemptNumber?: number
@@ -23,13 +21,11 @@ interface CertificateCardProps {
 }
 
 export function CertificateCard({
-  candidateName,
   specialization,
   score,
   isClean,
   date,
   certificateId,
-  candidateEmail = '',
   correctAnswers = 0,
   totalQuestions = 0,
   attemptNumber = 1,
@@ -61,8 +57,6 @@ export function CertificateCard({
       const parsed = new Date(date)
       await downloadCertificatePdf({
         certificateId,
-        candidateName,
-        candidateEmail,
         specialization,
         score,
         correctAnswers,
@@ -123,10 +117,12 @@ export function CertificateCard({
       {/* Content */}
       <div className="relative p-6 space-y-6">
         <div className="text-center space-y-2">
-          <p className="text-muted-foreground text-sm">Настоящим подтверждается, что</p>
-          <p className="text-2xl font-bold">{candidateName}</p>
+          <p className="text-muted-foreground text-sm">
+            Настоящим подтверждается, что владелец сертификата
+          </p>
+          <p className="text-xl font-bold font-mono">{certificateId}</p>
           <p className="text-muted-foreground">
-            успешно прошел(а) тестирование по направлению
+            успешно прошёл тестирование по направлению
           </p>
           <p className="text-lg font-semibold text-primary">{specialization}</p>
         </div>

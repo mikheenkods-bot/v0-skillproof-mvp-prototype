@@ -30,8 +30,6 @@ export function ResultsTable({
   // Экспорт отфильтрованных результатов в CSV (открывается в Excel/Google Sheets).
   const exportCsv = () => {
     const headers = [
-      'Имя',
-      'Email',
       'ID сертификата',
       'Специализация',
       'Балл (%)',
@@ -48,8 +46,6 @@ export function ResultsTable({
     }
     const rows = filtered.map((r) =>
       [
-        r.candidateName || '',
-        r.candidateEmail || '',
         r.certificateId,
         r.specialization,
         r.score,
@@ -112,9 +108,8 @@ export function ResultsTable({
     if (!q) return results
     return results.filter(
       (r) =>
-        r.candidateName?.toLowerCase().includes(q) ||
-        r.candidateEmail?.toLowerCase().includes(q) ||
-        r.certificateId.toLowerCase().includes(q)
+        r.certificateId.toLowerCase().includes(q) ||
+        r.specialization.toLowerCase().includes(q)
     )
   }, [results, query])
 
@@ -182,7 +177,7 @@ export function ResultsTable({
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск по имени, email или ID сертификата"
+          placeholder="Поиск по ID сертификата или специализации"
           className="pl-9"
         />
       </div>
@@ -210,9 +205,9 @@ export function ResultsTable({
             {filtered.map((r) => (
               <TableRow key={r.id}>
                 <TableCell>
-                  <div className="font-medium">{r.candidateName || '—'}</div>
+                  <div className="font-mono text-sm font-medium">{r.certificateId}</div>
                   <div className="text-xs text-muted-foreground">
-                    {r.candidateEmail || r.certificateId}
+                    Анонимный кандидат
                   </div>
                 </TableCell>
                 <TableCell>{r.specialization}</TableCell>

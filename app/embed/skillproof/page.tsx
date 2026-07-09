@@ -608,7 +608,6 @@ function SkillProofContent() {
               ) : finalScore >= 70 ? (
                 <>
                   <CertificateCard
-                    candidateName="Кандидат"
                     specialization={specConfig?.name || ''}
                     score={finalScore}
                     isClean={proctoring.violationCount === 0}

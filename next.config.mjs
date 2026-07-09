@@ -14,6 +14,20 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Baseline hardening for every route. Frame protection is intentionally
+        // NOT set here so the /embed route can still be embedded by rabota.ru;
+        // camera is allowed for the proctoring flow.
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self), microphone=(), geolocation=(), payment=()',
+          },
+        ],
+      },
+      {
         source: '/embed/:path*',
         headers: [
           {

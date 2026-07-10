@@ -85,7 +85,7 @@ export async function submitFeedback(input: {
   let pinLookup: string | null = null
   if (input.pin && checkPin(input.pin) === null) {
     try {
-      pinLookup = computePinLookup(input.pin)
+      pinLookup = await computePinLookup(input.pin)
     } catch {
       pinLookup = null
     }

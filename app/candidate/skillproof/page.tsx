@@ -356,7 +356,7 @@ export default function SkillProofPage() {
   }, [attemptId, proctoring])
 
   // Сохраняем снимок прогресса при каждом изменении ответов/номера вопроса
-  // во время теста. Дёшево (один localStorage.setItem) и переживае�� reload.
+  // во время теста. Дёшево (один localStorage.setItem) и переживае���� reload.
   useEffect(() => {
     if (stage !== 'testing' || !attemptId || !specialization || questions.length === 0) return
     writeProgressSnapshot({
@@ -1577,8 +1577,8 @@ export default function SkillProofPage() {
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8 text-pretty">
                     {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS
-                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'
-                      : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Ваши результаты сохранены и отправлены на платформу «Работа.ру».'}
+                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) и��и завершить, закрыв вкладку браузера. Прикрепите ваш сертификат к вашему профилю на платформе «Работа.ру».'
+                      : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Прикрепите ваш сертификат к вашему профилю на платформе «Работа.ру».'}
                   </p>
 
                   {/* Score out of 100 */}
@@ -1671,7 +1671,7 @@ export default function SkillProofPage() {
                     </div>
                   )}
 
-                  {/* Обратная связь о тестировании — доступна всем завершившим */}
+                  {/* Обратная свя��ь о тестировании — доступна всем завершившим */}
                   <div className="mb-6">
                     <FeedbackDialog
                       certificateId={certificateId || null}

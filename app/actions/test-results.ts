@@ -51,7 +51,7 @@ export async function saveTestResult(input: SaveTestResultInput) {
 
     let pinLookup: string
     try {
-      pinLookup = computePinLookup(input.pin)
+      pinLookup = await computePinLookup(input.pin)
     } catch {
       return { success: false, error: 'Сервис временно недоступен' }
     }

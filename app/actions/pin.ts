@@ -57,10 +57,10 @@ export async function registerPin(pin: string): Promise<RegisterPinResult> {
     let lookup: string
     let hash: string
     try {
-      lookup = computePinLookup(pin)
+      lookup = await computePinLookup(pin)
       hash = await hashPin(pin)
     } catch (error) {
-      // SERVER_PEPPER missing -> fail closed.
+      // No usable pepper AND the DB fallback is unreachable -> fail closed.
       console.error('[v0] PIN registration disabled:', (error as Error).message)
       return { success: false, error: 'Сервис временно недоступен. Попробуйте позже.' }
     }
@@ -92,7 +92,9 @@ export async function registerPin(pin: string): Promise<RegisterPinResult> {
 async function findFreePins(count: number): Promise<string[]> {
   try {
     const candidatesToTry = generateCandidatePins(count * 3)
-    const lookups = candidatesToTry.map((p) => ({ pin: p, lookup: computePinLookup(p) }))
+    const lookups = await Promise.all(
+      candidatesToTry.map(async (p) => ({ pin: p, lookup: await computePinLookup(p) }))
+    )
     const taken = await db
       .select({ pinLookup: candidates.pinLookup })
       .from(candidates)
@@ -137,7 +139,7 @@ export async function getCompletionByPin(pin: string): Promise<ExistingCompletio
 
   let lookup: string
   try {
-    lookup = computePinLookup(pin)
+    lookup = await computePinLookup(pin)
   } catch {
     return EMPTY_COMPLETION
   }
@@ -206,7 +208,7 @@ export async function getCertificatesByPin(pin: string): Promise<RecoverCertific
 
     let lookup: string
     try {
-      lookup = computePinLookup(pin)
+      lookup = await computePinLookup(pin)
     } catch {
       return { certificates: [] }
     }

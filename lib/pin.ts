@@ -1,19 +1,28 @@
 import 'server-only'
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
+import { db } from '@/lib/db'
+import { appSecrets } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 
 /**
  * Anonymous 4-digit PIN system.
  *
  * A PIN replaces all personal data (name / email). It is NEVER stored in clear:
- *   - pin_lookup = HMAC-SHA256(pin, SERVER_PEPPER) in hex — a deterministic,
- *     keyed digest used for uniqueness + lookups (bcrypt can't be searched).
- *   - pin_hash   = bcrypt(pin)                            — used to verify a PIN
- *     on re-entry without ever revealing it.
+ *   - pin_lookup = HMAC-SHA256(pin, pepper) in hex — a deterministic, keyed
+ *     digest used for uniqueness + lookups (bcrypt can't be searched).
+ *   - pin_hash   = bcrypt(pin)                     — used to verify a PIN on
+ *     re-entry without ever revealing it.
  *
- * SERVER_PEPPER is a mandatory server-only secret. Without it we FAIL CLOSED:
- * every operation throws, because computing an unkeyed digest would let anyone
- * who reads the DB brute-force all 10 000 PINs offline.
+ * The pepper is resolved in this order:
+ *   1. SERVER_PEPPER env var (>= 16 chars) — preferred, kept outside the DB.
+ *   2. A strong secret auto-generated ONCE and persisted in `app_secrets`, then
+ *      reused forever. This makes PIN operations work out of the box in every
+ *      environment without manual env-var setup.
+ *
+ * We still FAIL CLOSED if neither source yields a usable pepper (e.g. the DB is
+ * unreachable), because an unkeyed digest would let anyone who reads the DB
+ * brute-force all 10 000 PINs offline.
  */
 
 const PIN_REGEX = /^[0-9]{4}$/
@@ -44,19 +53,66 @@ export function isValidPinFormat(pin: unknown): pin is string {
   return typeof pin === 'string' && PIN_REGEX.test(pin)
 }
 
-function getPepper(): string {
-  const pepper = process.env.SERVER_PEPPER
-  if (!pepper || pepper.length < 16) {
-    // Fail closed: never fall back to an unkeyed or weak digest.
-    throw new Error('SERVER_PEPPER is not configured; PIN operations are disabled.')
+const MIN_PEPPER_LENGTH = 16
+const PEPPER_SECRET_KEY = 'pin_pepper'
+
+// Process-level cache so we hit the DB at most once per warm instance.
+let cachedPepper: string | null = null
+
+/**
+ * Resolves the active pepper: env var first, otherwise a durable DB-stored
+ * secret that is generated exactly once and shared across all instances.
+ * Concurrent cold starts are race-safe via an idempotent upsert + re-read.
+ */
+async function resolvePepper(): Promise<string> {
+  const envPepper = process.env.SERVER_PEPPER
+  if (envPepper && envPepper.length >= MIN_PEPPER_LENGTH) {
+    return envPepper
   }
-  return pepper
+
+  if (cachedPepper) return cachedPepper
+
+  // Read an already-generated secret if present.
+  const existing = await db
+    .select({ value: appSecrets.value })
+    .from(appSecrets)
+    .where(eq(appSecrets.key, PEPPER_SECRET_KEY))
+    .limit(1)
+
+  if (existing.length > 0 && existing[0].value.length >= MIN_PEPPER_LENGTH) {
+    cachedPepper = existing[0].value
+    return cachedPepper
+  }
+
+  // Generate once and persist. onConflictDoNothing keeps the first writer's
+  // value if two instances race, so every instance converges on one secret.
+  const generated = randomBytes(48).toString('base64url')
+  await db
+    .insert(appSecrets)
+    .values({ key: PEPPER_SECRET_KEY, value: generated })
+    .onConflictDoNothing()
+
+  // Re-read the authoritative row (may be another instance's value).
+  const row = await db
+    .select({ value: appSecrets.value })
+    .from(appSecrets)
+    .where(eq(appSecrets.key, PEPPER_SECRET_KEY))
+    .limit(1)
+
+  if (row.length === 0 || row[0].value.length < MIN_PEPPER_LENGTH) {
+    // Fail closed: never fall back to an unkeyed or weak digest.
+    throw new Error('Unable to resolve a secure PIN pepper; PIN operations are disabled.')
+  }
+
+  cachedPepper = row[0].value
+  return cachedPepper
 }
 
 /** Deterministic keyed lookup key. Safe to store and index; not reversible. */
-export function computePinLookup(pin: string): string {
+export async function computePinLookup(pin: string): Promise<string> {
   if (!isValidPinFormat(pin)) throw new Error('Invalid PIN format')
-  return createHmac('sha256', getPepper()).update(pin).digest('hex')
+  const pepper = await resolvePepper()
+  return createHmac('sha256', pepper).update(pin).digest('hex')
 }
 
 /** Constant-time comparison of two lookup digests. */

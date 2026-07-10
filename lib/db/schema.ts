@@ -142,3 +142,25 @@ export const rateLimits = pgTable('rate_limits', {
 })
 
 export type RateLimitRow = typeof rateLimits.$inferSelect
+
+/**
+ * Durable server-side secrets that must survive restarts and be identical
+ * across every runtime instance/environment sharing this database.
+ *
+ * Used as a self-healing fallback for the PIN pepper: if SERVER_PEPPER is not
+ * configured (or is too weak), the app generates a strong secret ONCE, stores
+ * it here, and reuses it forever — so anonymous PIN registration works out of
+ * the box in every environment without manual env-var setup.
+ *
+ * Trade-off vs an env-var pepper: the secret lives in the same database as the
+ * data it protects. An explicitly configured SERVER_PEPPER always takes
+ * precedence and is preferred for the strongest protection.
+ */
+export const appSecrets = pgTable('app_secrets', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type AppSecretRow = typeof appSecrets.$inferSelect
+export type NewAppSecretRow = typeof appSecrets.$inferInsert

@@ -230,7 +230,7 @@ SkillVerify.destroyAll();`
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 mb-4">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto mb-4">
                   <TabsTrigger value="basic">Базовое</TabsTrigger>
                   <TabsTrigger value="data-attr">Data-атрибуты</TabsTrigger>
                   <TabsTrigger value="modal">Модальное окно</TabsTrigger>
@@ -310,7 +310,7 @@ SkillVerify.destroyAll();`
                       <td className="py-2 px-4"><code>width</code></td>
                       <td className="py-2 px-4">string</td>
                       <td className="py-2 px-4">{`'100%'`}</td>
-                      <td className="py-2 px-4">Ширина виджета</td>
+                      <td className="py-2 px-4">Шир��на виджета</td>
                     </tr>
                     <tr className="border-b">
                       <td className="py-2 px-4"><code>height</code></td>
@@ -378,7 +378,7 @@ window.addEventListener('message', function(event) {
       // Тест прерван
       break;
     case 'skillverify:stageChange':
-      // Смена этапа
+      // Смена ��тапа
       break;
   }
 });`} id="postmessage" />
@@ -413,7 +413,7 @@ window.addEventListener('message', function(event) {
           {/* Demo */}
           <Card>
             <CardHeader>
-              <CardTitle>Демо</CardTitle>
+              <CardTitle>��емо</CardTitle>
               <CardDescription>
                 Попробуйте виджет прямо сейчас
               </CardDescription>

@@ -157,7 +157,7 @@ export function ResultsTable({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Всего</p>
           <p className="text-2xl font-bold">{results.length}</p>

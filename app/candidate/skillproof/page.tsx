@@ -356,7 +356,7 @@ export default function SkillProofPage() {
   }, [attemptId, proctoring])
 
   // Сохраняем снимок прогресса при каждом изменении ответов/номера вопроса
-  // во время теста. Дёшево (один localStorage.setItem) и переживает reload.
+  // во время теста. Дёшево (один localStorage.setItem) и переживае�� reload.
   useEffect(() => {
     if (stage !== 'testing' || !attemptId || !specialization || questions.length === 0) return
     writeProgressSnapshot({
@@ -721,7 +721,7 @@ export default function SkillProofPage() {
     setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
     clearAnchoredDeadline()
     clearProgressSnapshot()
-    // Пересдача — это НОВАЯ попытка: ротируем attemptId, чтобы лог прокторинга и
+    // Пересдача — это НОВАЯ попытка: ротируем attemptId, ��тобы лог прокторинга и
     // счётчик нарушений начались с чистого л��ста (хук пересоздаёт сессию).
     setAttemptId(rotateAttemptId())
     setAnalysisProgress(0)
@@ -1291,16 +1291,16 @@ export default function SkillProofPage() {
               className="max-w-3xl mx-auto"
             >
               {/* Header */}
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-medium">
                     <Shield className="h-4 w-4 proctoring-pulse" />
                     Режим прокторинга активен
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   <div className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-lg font-bold",
+                    "flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-mono text-base sm:text-lg font-bold",
                     timeRemaining <= 300 ? "bg-destructive/10 text-destructive" : "bg-muted"
                   )}>
                     <Clock className="h-5 w-5" />
@@ -1312,8 +1312,9 @@ export default function SkillProofPage() {
                     onClick={() => setShowExitConfirm(true)}
                     className="text-muted-foreground"
                   >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Выйти из теста
+                    <XCircle className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Выйти из теста</span>
+                    <span className="sr-only">Выйти из теста</span>
                   </Button>
                 </div>
               </div>
@@ -1365,7 +1366,7 @@ export default function SkillProofPage() {
               </div>
 
               {/* Question Card */}
-              <div className="rounded-2xl border border-border bg-card p-8 no-select">
+              <div className="rounded-2xl border border-border bg-card p-5 sm:p-8 no-select">
                 <div className="flex items-center gap-2 mb-4">
                   <span className={cn(
                     "px-2 py-1 rounded text-xs font-medium",
@@ -1581,7 +1582,7 @@ export default function SkillProofPage() {
                   </p>
 
                   {/* Score out of 100 */}
-                  <div className="rounded-2xl border bg-card p-8 mb-6">
+                  <div className="rounded-2xl border bg-card p-6 sm:p-8 mb-6">
                     <div className="text-sm text-muted-foreground mb-2">
                       Ваш балл по 100-балльной шкале
                     </div>

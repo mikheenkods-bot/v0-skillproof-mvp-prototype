@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { rateLimit, getClientIp, withMinimumDuration } from '@/lib/rate-limit'
+import { safeEqual } from '@/lib/security'
 
 const SESSION_COOKIE = 'admin_session'
 
@@ -30,7 +31,7 @@ export async function isAdminAuthenticated(): Promise<boolean> {
   if (!token) return false
 
   const expected = await sessionToken(requiredKey)
-  return token === expected
+  return safeEqual(token, expected)
 }
 
 /** Server action для формы входа. Возвращает текст ошибки или редиректит в админку. */
@@ -57,7 +58,7 @@ export async function loginAdmin(
     if (!key) {
       return { error: 'Введите ключ доступа.' }
     }
-    if (key !== requiredKey) {
+    if (!safeEqual(key, requiredKey)) {
       return { error: 'Неверный ключ доступа. Попробуйте снова.' }
     }
     return { error: undefined }

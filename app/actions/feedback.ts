@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { feedback, type NewFeedbackRow } from '@/lib/db/schema'
 import { clampText, clampRating, FIELD_LIMITS } from '@/lib/validation'
 import { checkPin, computePinLookup } from '@/lib/pin'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 // Raw SQL client for idempotent DDL. This project has no migration step, so the
 // `feedback` table can be absent on whatever database a deployment connects to
@@ -69,6 +70,14 @@ export async function submitFeedback(input: {
   const rating = clampRating(input.rating)
   if (rating === null) {
     return { success: false, error: 'Оценка должна быть от 1 до 5' }
+  }
+
+  // This action is public and unauthenticated; cap submissions per IP so it
+  // can't be used to flood the feedback table.
+  const ip = await getClientIp()
+  const rl = await rateLimit(`feedback:${ip}`, 10, 600)
+  if (!rl.ok) {
+    return { success: false, error: 'Слишком много отзывов. Повторите позже.' }
   }
 
   // Optionally link the feedback to the anonymous candidate via PIN lookup.

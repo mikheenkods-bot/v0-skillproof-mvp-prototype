@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { proctoringEvents } from '@/lib/db/schema'
 import { EVENT_WEIGHTS, EventType, INTEGRITY_THRESHOLDS } from '@/lib/proctoring/types'
 import { isAdminAuthenticated } from '@/app/admin/results/auth'
+import { safeEqual } from '@/lib/security'
 import {
   isValidEventType,
   clampString,
@@ -131,9 +132,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'API not configured' }, { status: 503 })
   }
 
-  const providedKey =
-    request.headers.get('x-api-key') || request.nextUrl.searchParams.get('api_key')
-  const authorized = providedKey === requiredKey || (await isAdminAuthenticated())
+  const providedKey = request.headers.get('x-api-key')
+  const authorized = safeEqual(providedKey, requiredKey) || (await isAdminAuthenticated())
   if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

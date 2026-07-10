@@ -2,11 +2,14 @@ import { db } from '@/lib/db'
 import { testResults } from '@/lib/db/schema'
 import { desc, eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+import { safeEqual } from '@/lib/security'
 
 // GET /api/results
 // Returns all test results as JSON. Intended for consumption by external systems.
 // Protected by an API key: the RESULTS_API_KEY env var MUST be set, and callers
-// must provide it via the "x-api-key" header or "?api_key=" query param.
+// must provide it via the "x-api-key" request header. The key is intentionally
+// NOT accepted as a query parameter, since URLs leak into access logs, browser
+// history and Referer headers.
 export async function GET(request: Request) {
   const requiredKey = process.env.RESULTS_API_KEY
 
@@ -20,12 +23,12 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url)
-  const providedKey =
-    request.headers.get('x-api-key') || searchParams.get('api_key')
+  const providedKey = request.headers.get('x-api-key')
 
-  if (providedKey !== requiredKey) {
+  // Constant-time comparison to avoid leaking the key via response timing.
+  if (!safeEqual(providedKey, requiredKey)) {
     return NextResponse.json(
-      { error: 'Unauthorized. Provide a valid API key.' },
+      { error: 'Unauthorized. Provide a valid API key in the x-api-key header.' },
       { status: 401 }
     )
   }

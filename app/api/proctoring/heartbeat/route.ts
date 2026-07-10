@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdminAuthenticated } from '@/app/admin/results/auth'
+import { safeEqual } from '@/lib/security'
 import { clampString, rateLimit, clientIp, maybeSweep, LIMITS } from '@/lib/proctoring/api-guard'
 
 // In-memory storage for heartbeats.
@@ -88,9 +89,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'API not configured' }, { status: 503 })
   }
 
-  const providedKey =
-    request.headers.get('x-api-key') || request.nextUrl.searchParams.get('api_key')
-  const authorized = providedKey === requiredKey || (await isAdminAuthenticated())
+  const providedKey = request.headers.get('x-api-key')
+  const authorized = safeEqual(providedKey, requiredKey) || (await isAdminAuthenticated())
   if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

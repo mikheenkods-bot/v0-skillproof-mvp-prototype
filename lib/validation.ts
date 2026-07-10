@@ -23,6 +23,25 @@ export function clampRating(value: unknown, min = 1, max = 5): number | null {
   return r
 }
 
+/**
+ * Coerces an unknown to an integer, clamping into [min, max]. Non-numeric /
+ * NaN input falls back to `min`. Used to defend against forged or out-of-range
+ * numeric fields on public server actions.
+ */
+export function clampInt(value: unknown, min: number, max: number): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return min
+  const r = Math.round(n)
+  if (r < min) return min
+  if (r > max) return max
+  return r
+}
+
+/** Validates a certificate id: 4–64 chars, uppercase alnum + dashes only. */
+export function isValidCertificateId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9-]{4,64}$/.test(value)
+}
+
 /** Trims and clamps a free-text value. Non-strings / empties become null. */
 export function clampText(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null

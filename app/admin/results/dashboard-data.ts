@@ -8,6 +8,7 @@ import {
   type TestResult,
   type FeedbackRow,
 } from '@/lib/db/schema'
+import { ensureAnalyticsSchema } from '@/lib/db/ensure-analytics-schema'
 import { EVENT_WEIGHTS } from '@/lib/proctoring/types'
 
 export interface FunnelStats {
@@ -37,6 +38,39 @@ export interface FeedbackStats {
   items: FeedbackRow[]
 }
 
+/** Метрики вовлечённости на основе анонимного visitor_id. */
+export interface EngagementStats {
+  /** Уникальные посетители за сегодня. */
+  dau: number
+  /** Уникальные посетители за последние 7 дней. */
+  wau: number
+  /** Уникальные посетители за последние 30 дней. */
+  mau: number
+  /** «Липкость» аудитории: DAU / MAU в процентах. */
+  stickiness: number
+  /** Всего уникальных посетителей за всё время. */
+  totalVisitors: number
+  /** Посетители, заходившие минимум в 2 разных дня (вернувшиеся). */
+  returningVisitors: number
+  /** Retention: доля вернувшихся от общего числа посетителей, в процентах. */
+  retentionRate: number
+  /**
+   * false, если данных по посетителям ещё нет (например, колонка visitor_id
+   * только что создана и события ещё не накопились) — тогда UI показывает
+   * поясняющую подсказку вместо нулей.
+   */
+  available: boolean
+}
+
+/** Точка ежедневной активности для графика за последние 14 дней. */
+export interface ActivityPoint {
+  /** Дата в формате YYYY-MM-DD. */
+  date: string
+  visits: number
+  started: number
+  completed: number
+}
+
 export interface DashboardData {
   results: TestResult[]
   funnel: FunnelStats
@@ -44,6 +78,112 @@ export interface DashboardData {
   totalViolations: number
   attemptsWithViolations: number
   feedback: FeedbackStats
+  engagement: EngagementStats
+  activity: ActivityPoint[]
+}
+
+const EMPTY_ENGAGEMENT: EngagementStats = {
+  dau: 0,
+  wau: 0,
+  mau: 0,
+  stickiness: 0,
+  totalVisitors: 0,
+  returningVisitors: 0,
+  retentionRate: 0,
+  available: false,
+}
+
+/**
+ * Считает метрики вовлечённости (DAU/MAU/retention) и ежедневную активность.
+ * Изолировано в отдельной функции с try/catch: если колонка visitor_id ещё не
+ * создана или база временно недоступна, дашборд всё равно откроется — просто
+ * без этих метрик.
+ */
+async function getEngagementAndActivity(): Promise<{
+  engagement: EngagementStats
+  activity: ActivityPoint[]
+}> {
+  try {
+    await ensureAnalyticsSchema()
+
+    const [aggRows, returningRes, activityRows] = await Promise.all([
+      // Единый проход по таблице для DAU/WAU/MAU и общего числа посетителей.
+      db
+        .select({
+          dau: sql<number>`count(distinct case when ${analyticsEvents.createdAt} >= date_trunc('day', now()) then ${analyticsEvents.visitorId} end)::int`,
+          wau: sql<number>`count(distinct case when ${analyticsEvents.createdAt} >= now() - interval '7 days' then ${analyticsEvents.visitorId} end)::int`,
+          mau: sql<number>`count(distinct case when ${analyticsEvents.createdAt} >= now() - interval '30 days' then ${analyticsEvents.visitorId} end)::int`,
+          total: sql<number>`count(distinct ${analyticsEvents.visitorId})::int`,
+        })
+        .from(analyticsEvents),
+      // Вернувшиеся: посетители, активные минимум в 2 разных календарных дня.
+      db.execute(sql`
+        select count(*)::int as returning
+        from (
+          select ${analyticsEvents.visitorId} as vid
+          from ${analyticsEvents}
+          where ${analyticsEvents.visitorId} is not null
+          group by ${analyticsEvents.visitorId}
+          having count(distinct date_trunc('day', ${analyticsEvents.createdAt})) >= 2
+        ) t
+      `),
+      // Ежедневная активность по типам событий за последние 14 дней.
+      db
+        .select({
+          day: sql<string>`to_char(date_trunc('day', ${analyticsEvents.createdAt}), 'YYYY-MM-DD')`,
+          eventType: analyticsEvents.eventType,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(analyticsEvents)
+        .where(sql`${analyticsEvents.createdAt} >= now() - interval '13 days'`)
+        .groupBy(sql`1`, analyticsEvents.eventType),
+    ])
+
+    const agg = aggRows[0] ?? { dau: 0, wau: 0, mau: 0, total: 0 }
+    const dau = Number(agg.dau ?? 0)
+    const wau = Number(agg.wau ?? 0)
+    const mau = Number(agg.mau ?? 0)
+    const totalVisitors = Number(agg.total ?? 0)
+    const returningVisitors = Number(
+      (returningRes.rows?.[0] as { returning?: number } | undefined)?.returning ?? 0
+    )
+
+    const engagement: EngagementStats = {
+      dau,
+      wau,
+      mau,
+      stickiness: mau ? Math.round((dau / mau) * 100) : 0,
+      totalVisitors,
+      returningVisitors,
+      retentionRate: totalVisitors ? Math.round((returningVisitors / totalVisitors) * 100) : 0,
+      available: totalVisitors > 0,
+    }
+
+    // Разворачиваем строки в непрерывный ряд из 14 дней (включая пустые).
+    const byDay = new Map<string, { visits: number; started: number; completed: number }>()
+    for (const row of activityRows) {
+      const key = String(row.day)
+      const bucket = byDay.get(key) ?? { visits: 0, started: 0, completed: 0 }
+      const n = Number(row.count)
+      if (row.eventType === 'visit') bucket.visits += n
+      else if (row.eventType === 'test_started') bucket.started += n
+      else if (row.eventType === 'test_completed') bucket.completed += n
+      byDay.set(key, bucket)
+    }
+    const activity: ActivityPoint[] = []
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - i)
+      const key = d.toISOString().slice(0, 10)
+      const bucket = byDay.get(key) ?? { visits: 0, started: 0, completed: 0 }
+      activity.push({ date: key, ...bucket })
+    }
+
+    return { engagement, activity }
+  } catch (error) {
+    console.error('[v0] engagement metrics unavailable:', error instanceof Error ? error.message : error)
+    return { engagement: EMPTY_ENGAGEMENT, activity: [] }
+  }
 }
 
 // Человекочитаемые названия событий прокторинга для администратора.
@@ -79,7 +219,7 @@ function severityForWeight(weight: number): ViolationStat['severity'] {
  * результаты, воронку прохождения, разбивку нарушений прокторинга и отзывы.
  */
 export async function getDashboardData(): Promise<DashboardData> {
-  const [results, funnelRows, violationRows, feedbackItems] = await Promise.all([
+  const [results, funnelRows, violationRows, feedbackItems, engagementAndActivity] = await Promise.all([
     db.select().from(testResults).orderBy(desc(testResults.createdAt)),
     // Считаем уникальные заходы по типам событий воронки.
     db
@@ -99,6 +239,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       .from(proctoringEvents)
       .groupBy(proctoringEvents.eventType),
     db.select().from(feedback).orderBy(desc(feedback.createdAt)),
+    getEngagementAndActivity(),
   ])
 
   // --- Воронка ---
@@ -165,5 +306,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     totalViolations,
     attemptsWithViolations,
     feedback: feedbackStats,
+    engagement: engagementAndActivity.engagement,
+    activity: engagementAndActivity.activity,
   }
 }

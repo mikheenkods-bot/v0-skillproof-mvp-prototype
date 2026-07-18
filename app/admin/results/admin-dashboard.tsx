@@ -17,6 +17,11 @@ import {
   LogOut,
   ListChecks,
   BarChart3,
+  Activity,
+  TrendingUp,
+  Repeat,
+  UserCheck,
+  CalendarRange,
 } from 'lucide-react'
 import { ResultsTable } from './results-table'
 import { logoutAdmin } from './auth'
@@ -29,7 +34,16 @@ export function AdminDashboard({
   data: DashboardData
   accessKey: string
 }) {
-  const { results, funnel, violations, totalViolations, attemptsWithViolations, feedback } = data
+  const {
+    results,
+    funnel,
+    violations,
+    totalViolations,
+    attemptsWithViolations,
+    feedback,
+    engagement,
+    activity,
+  } = data
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,6 +73,10 @@ export function AdminDashboard({
               <BarChart3 className="mr-2 h-4 w-4" />
               Статистика
             </TabsTrigger>
+            <TabsTrigger value="engagement">
+              <Activity className="mr-2 h-4 w-4" />
+              Вовлечённость
+            </TabsTrigger>
             <TabsTrigger value="proctoring">
               <ShieldAlert className="mr-2 h-4 w-4" />
               Прокторинг
@@ -77,6 +95,11 @@ export function AdminDashboard({
           {/* --- Статистика прохождения (воронка) --- */}
           <TabsContent value="stats">
             <StatsTab funnel={funnel} />
+          </TabsContent>
+
+          {/* --- Вовлечённость (DAU/MAU/retention + активность) --- */}
+          <TabsContent value="engagement">
+            <EngagementTab engagement={engagement} activity={activity} />
           </TabsContent>
 
           {/* --- Прокторинг --- */}
@@ -197,6 +220,114 @@ function StatsTab({ funnel }: { funnel: DashboardData['funnel'] }) {
             <p className="text-sm text-muted-foreground">
               Пока нет данных о заходах. Статистика появится, когда кандидаты начнут открывать страницу тестирования.
             </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function EngagementTab({
+  engagement,
+  activity,
+}: {
+  engagement: DashboardData['engagement']
+  activity: DashboardData['activity']
+}) {
+  const maxActivity = activity.reduce(
+    (m, p) => Math.max(m, p.visits, p.started, p.completed),
+    0
+  )
+  const series = [
+    { key: 'visits' as const, label: 'Заходы', color: 'bg-sky-500' },
+    { key: 'started' as const, label: 'Начали тест', color: 'bg-indigo-500' },
+    { key: 'completed' as const, label: 'Завершили', color: 'bg-emerald-500' },
+  ]
+
+  return (
+    <div className="space-y-6">
+      {!engagement.available && (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Данные о посетителях ещё накапливаются. Метрики появятся после того,
+            как кандидаты начнут заходить на страницу тестирования (учитывается
+            анонимный идентификатор посетителя без персональных данных).
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard icon={Users} label="DAU — уникальных за сегодня" value={engagement.dau} />
+        <StatCard icon={CalendarRange} label="WAU — за 7 дней" value={engagement.wau} />
+        <StatCard icon={CalendarRange} label="MAU — за 30 дней" value={engagement.mau} />
+        <StatCard
+          icon={TrendingUp}
+          label="Липкость (DAU/MAU)"
+          value={`${engagement.stickiness}%`}
+          hint="Насколько часто посетители возвращаются"
+          tone="success"
+        />
+        <StatCard
+          icon={Repeat}
+          label="Retention"
+          value={`${engagement.retentionRate}%`}
+          hint="Доля заходивших в 2+ разных дня"
+          tone="success"
+        />
+        <StatCard
+          icon={UserCheck}
+          label="Всего посетителей"
+          value={engagement.totalVisitors}
+          hint={`Вернулись: ${engagement.returningVisitors}`}
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Активность за 14 дней</CardTitle>
+          <CardDescription>Ежедневные заходы, старты и завершения тестов</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4 flex flex-wrap gap-4">
+            {series.map((s) => (
+              <span key={s.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={`h-2.5 w-2.5 rounded-sm ${s.color}`} />
+                {s.label}
+              </span>
+            ))}
+          </div>
+
+          {maxActivity === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Пока нет активности за последние две недели.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="flex min-w-[520px] items-end gap-2">
+                {activity.map((p) => {
+                  const day = Number(p.date.slice(8, 10))
+                  return (
+                    <div key={p.date} className="flex flex-1 flex-col items-center gap-1">
+                      <div className="flex h-32 w-full items-end justify-center gap-0.5">
+                        {series.map((s) => {
+                          const val = p[s.key]
+                          const h = maxActivity ? Math.round((val / maxActivity) * 100) : 0
+                          return (
+                            <div
+                              key={s.key}
+                              className={`w-full rounded-t ${s.color}`}
+                              style={{ height: `${val > 0 ? Math.max(h, 3) : 0}%` }}
+                              title={`${s.label}: ${val} (${p.date})`}
+                            />
+                          )
+                        })}
+                      </div>
+                      <span className="text-[10px] tabular-nums text-muted-foreground">{day}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

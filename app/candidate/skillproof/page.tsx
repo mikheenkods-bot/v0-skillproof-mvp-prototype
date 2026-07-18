@@ -32,6 +32,7 @@ import {
   type ExistingCompletion,
 } from '@/app/actions/pin'
 import { trackEvent } from '@/app/actions/analytics'
+import { getVisitorId } from '@/lib/visitor-id'
 import { downloadCertificatePdf } from '@/lib/certificate-pdf'
 import { FeedbackDialog } from '@/components/feedback-dialog'
 import { CertificateRecovery } from '@/components/certificate-recovery'
@@ -356,7 +357,7 @@ export default function SkillProofPage() {
   }, [attemptId, proctoring])
 
   // Сохраняем снимок прогресса при каждом изменении ответов/номера вопроса
-  // во время теста. Дёшево (один localStorage.setItem) и переживае���� reload.
+  // во время теста. Дёшево (один localStorage.setItem) и переживае�� reload.
   useEffect(() => {
     if (stage !== 'testing' || !attemptId || !specialization || questions.length === 0) return
     writeProgressSnapshot({
@@ -547,6 +548,7 @@ export default function SkillProofPage() {
       void trackEvent('test_completed', {
         attemptId,
         specialization: specConfig?.name || 'skillproof',
+        visitorId: getVisitorId(),
         payload: { score, passed, violations: violationCount },
       })
 
@@ -587,9 +589,9 @@ export default function SkillProofPage() {
   }, [proctoring.violations.length, proctoring.violations, mediaEnabled.camera, media])
 
   // Воронка: фиксируем заход на страницу тестирования один раз за загрузку.
-  // Это даёт администратору метрику «скол��ко человек заходило на сайт».
+  // Это даёт администратору метрику «сколько ч��ловек заходило на сайт».
   useEffect(() => {
-    void trackEvent('visit', { specialization: 'skillproof' })
+    void trackEvent('visit', { specialization: 'skillproof', visitorId: getVisitorId() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -698,10 +700,11 @@ export default function SkillProofPage() {
     setStage('testing')
     setQuestionStartTime(Date.now())
     // Воронка: кандидат приступил к тесту.
-    void trackEvent('test_started', {
-      attemptId,
-      specialization: activeSpec || 'skillproof',
-    })
+      void trackEvent('test_started', {
+        attemptId,
+        specialization: activeSpec || 'skillproof',
+        visitorId: getVisitorId(),
+      })
   }
 
   // One-time retake: resets the attempt state and returns to specialization
@@ -721,8 +724,8 @@ export default function SkillProofPage() {
     setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
     clearAnchoredDeadline()
     clearProgressSnapshot()
-    // Пересдача — это НОВАЯ попытка: ротируем attemptId, ��тобы лог прокторинга и
-    // счётчик нарушений начались с чистого л��ста (хук пересоздаёт сессию).
+    // Пересдача — это НОВАЯ попытка: ротируем attemptId, чт��бы лог прокторинга и
+    // счётчик нарушений начались с чистого листа (хук пересоздаёт сессию).
     setAttemptId(rotateAttemptId())
     setAnalysisProgress(0)
   }
@@ -772,11 +775,12 @@ export default function SkillProofPage() {
     // Выход = отказ от текущей попытки: ротируем attemptId на случай нового захода.
     setAttemptId(rotateAttemptId())
     // Воронка: кандидат вышел из теста до завершения (не завершил).
-    void trackEvent('test_abandoned', {
-      attemptId,
-      specialization: specialization || 'skillproof',
-      payload: { question: currentQuestion + 1, total: questions.length },
-    })
+      void trackEvent('test_abandoned', {
+        attemptId,
+        specialization: specialization || 'skillproof',
+        visitorId: getVisitorId(),
+        payload: { question: currentQuestion + 1, total: questions.length },
+      })
     router.push('/')
   }
 
@@ -921,7 +925,11 @@ export default function SkillProofPage() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6">
+              {/* Восстановление сертификата по коду вынесено наверх: кандидаты,
+                  которые уже проходили тест, сразу видят эту опцию. */}
+              <CertificateRecovery />
+
+              <div className="rounded-2xl border bg-card p-6 md:p-8 mb-6 mt-6">
                 <h2 className="text-lg font-semibold mb-4">Перед началом</h2>
                 <div className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                   <p>
@@ -1070,9 +1078,6 @@ export default function SkillProofPage() {
                   </>
                 )}
               </Button>
-
-              {/* Восстановление сертификата по коду (Фаза 3). */}
-              <CertificateRecovery />
             </motion.div>
           )}
 
@@ -1577,7 +1582,7 @@ export default function SkillProofPage() {
                   <h2 className="text-2xl font-bold mb-1">Тестирование завершено</h2>
                   <p className="text-muted-foreground mb-8 text-pretty">
                     {attemptNumber < TEST_CONFIG.MAX_ATTEMPTS
-                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) и��и завершить, закрыв вкладку браузера. Прикрепите ваш сертификат к вашему профилю на платформе «Работа.ру».'
+                      ? 'Тест завершён. Вы можете пройти его заново (осталась 1 попытка) или завершить, закрыв вкладку браузера. Прикрепите ваш сертификат к вашему профилю на платформе «Работа.ру».'
                       : 'Тест завершён. Вы можете завершить, закрыв вкладку браузера. Прикрепите ваш сертификат к вашему профилю на платформе «Работа.ру».'}
                   </p>
 
@@ -1671,7 +1676,7 @@ export default function SkillProofPage() {
                     </div>
                   )}
 
-                  {/* Обратная свя��ь о тестировании — доступна всем завершившим */}
+                  {/* Обратная связ�� о тестировании — доступна всем завершившим */}
                   <div className="mb-6">
                     <FeedbackDialog
                       certificateId={certificateId || null}

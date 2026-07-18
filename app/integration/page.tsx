@@ -310,7 +310,7 @@ SkillVerify.destroyAll();`
                       <td className="py-2 px-4"><code>width</code></td>
                       <td className="py-2 px-4">string</td>
                       <td className="py-2 px-4">{`'100%'`}</td>
-                      <td className="py-2 px-4">Шир��на виджета</td>
+                      <td className="py-2 px-4">Ширина виджета</td>
                     </tr>
                     <tr className="border-b">
                       <td className="py-2 px-4"><code>height</code></td>
@@ -378,7 +378,7 @@ window.addEventListener('message', function(event) {
       // Тест прерван
       break;
     case 'skillverify:stageChange':
-      // Смена ��тапа
+      // Смена этапа
       break;
   }
 });`} id="postmessage" />
@@ -413,7 +413,7 @@ window.addEventListener('message', function(event) {
           {/* Demo */}
           <Card>
             <CardHeader>
-              <CardTitle>��емо</CardTitle>
+              <CardTitle>Демо</CardTitle>
               <CardDescription>
                 Попробуйте виджет прямо сейчас
               </CardDescription>

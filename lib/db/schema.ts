@@ -98,11 +98,17 @@ export const analyticsEvents = pgTable(
     eventType: text('event_type').notNull(),
     attemptId: text('attempt_id'),
     specialization: text('specialization'),
+    // Анонимный идентификатор посетителя (UUID из localStorage браузера).
+    // Не является ПДн — генерируется случайно на клиенте и нужен только для
+    // подсчёта уникальных посетителей (DAU/MAU) и retention.
+    visitorId: text('visitor_id'),
     payload: jsonb('payload').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     typeIdx: index('idx_analytics_events_type').on(table.eventType),
+    visitorIdx: index('idx_analytics_events_visitor').on(table.visitorId),
+    createdAtIdx: index('idx_analytics_events_created_at').on(table.createdAt),
   })
 )
 

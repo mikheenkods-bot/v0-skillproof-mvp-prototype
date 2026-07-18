@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { analyticsEvents, type NewAnalyticsEventRow } from '@/lib/db/schema'
+import { ensureAnalyticsSchema } from '@/lib/db/ensure-analytics-schema'
 import { clampText, FIELD_LIMITS } from '@/lib/validation'
 
 export type AnalyticsEventType =
@@ -40,6 +41,8 @@ export async function trackEvent(
   data: {
     attemptId?: string | null
     specialization?: string | null
+    /** Анонимный идентификатор посетителя из localStorage (не ПДн). */
+    visitorId?: string | null
     payload?: Record<string, unknown>
   } = {}
 ) {
@@ -49,10 +52,14 @@ export async function trackEvent(
   }
 
   try {
+    // Гарантируем наличие колонки visitor_id (идемпотентно, один раз на процесс).
+    await ensureAnalyticsSchema()
     const row: NewAnalyticsEventRow = {
       eventType,
       attemptId: clampText(data.attemptId, FIELD_LIMITS.attemptId),
       specialization: clampText(data.specialization, FIELD_LIMITS.specialization),
+      // visitorId — случайный UUID (36 симв.), ограничиваем на всякий случай.
+      visitorId: clampText(data.visitorId, 64),
       payload: sanitizePayload(data.payload),
     }
     await db.insert(analyticsEvents).values(row)

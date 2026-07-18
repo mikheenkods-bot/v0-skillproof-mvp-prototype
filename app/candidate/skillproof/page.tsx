@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import confetti from 'canvas-confetti'
 import { Button } from '@/components/ui/button'
@@ -188,7 +187,6 @@ const preparationChecklist = [
 ]
 
 export default function SkillProofPage() {
-  const router = useRouter()
   const [stage, setStage] = useState<Stage>('disclaimer')
   // Анонимная идентификация: 4-значный PIN вместо имени/e-mail.
   const [pin, setPin] = useState('')
@@ -588,7 +586,7 @@ export default function SkillProofPage() {
     lastViolationCountRef.current = currentCount
   }, [proctoring.violations.length, proctoring.violations, mediaEnabled.camera, media])
 
-  // Воронка: фиксируем заход на страницу тестирования один раз за загрузку.
+  // Воронка: фиксируем заход на страницу тестирования один раз за загрузк��.
   // Это даёт администратору метрику «сколько ч��ловек заходило на сайт».
   useEffect(() => {
     void trackEvent('visit', { specialization: 'skillproof', visitorId: getVisitorId() })
@@ -766,6 +764,21 @@ export default function SkillProofPage() {
 
   // Выход из теста до завершения: попытка НЕ засчитывается (результат не
   // сохраняется), таймер и прокторинг останавливаются, кандидат уходит на главную.
+  // Возврат на стартовый экран этой же страницы. Раньше здесь был
+  // router.push('/'), но '/' редиректит обратно на /candidate/skillproof —
+  // тот же маршрут, поэтому клиентское состояние (stage === 'testing') не
+  // сбрасывалось и кандидат «возвращался» в тест. Сбрасываем стадию напрямую;
+  // эффект на stage === 'disclaimer' сам очищает дедлайн и снимок прогресса.
+  const returnToStart = () => {
+    setStage('disclaimer')
+    setCurrentQuestion(0)
+    setAnswers({})
+    setShowExplanation(false)
+    setIsAnswerLocked(false)
+    setProctoringWarning(null)
+    setTimeRemaining(TEST_CONFIG.DURATION_MINUTES * 60)
+  }
+
   const handleConfirmExit = () => {
     setShowExitConfirm(false)
     proctoring.stopSession()
@@ -775,13 +788,13 @@ export default function SkillProofPage() {
     // Выход = отказ от текущей попытки: ротируем attemptId на случай нового захода.
     setAttemptId(rotateAttemptId())
     // Воронка: кандидат вышел из теста до завершения (не завершил).
-      void trackEvent('test_abandoned', {
-        attemptId,
-        specialization: specialization || 'skillproof',
-        visitorId: getVisitorId(),
-        payload: { question: currentQuestion + 1, total: questions.length },
-      })
-    router.push('/')
+    void trackEvent('test_abandoned', {
+      attemptId,
+      specialization: specialization || 'skillproof',
+      visitorId: getVisitorId(),
+      payload: { question: currentQuestion + 1, total: questions.length },
+    })
+    returnToStart()
   }
 
   // Генерация и скачивание PDF-сертификата (только для сдавших).
@@ -1139,7 +1152,7 @@ export default function SkillProofPage() {
                   variant="outline"
                   size="lg"
                   className="w-full"
-                  onClick={() => router.push('/')}
+                  onClick={returnToStart}
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   На главную
@@ -1160,7 +1173,7 @@ export default function SkillProofPage() {
               <Button 
                 variant="ghost" 
                 className="mb-6"
-                onClick={() => router.push('/')}
+                onClick={returnToStart}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 На главную
@@ -1391,9 +1404,9 @@ export default function SkillProofPage() {
 
                 {/*
                   Детерминированный «ключ» для E2E-автотеста. Рендерится ТОЛЬКО
-                  при активном тестовом флаге (вне продакшена). В обычном режиме
+                  при активном тестовом флаге (вн�� продакшена). В обычном режиме
                   элемента нет — ответы не раскрываются.
-                  - multiple_choice: индекс правильного варианта
+                  - multiple_choice: индекс правильного вар��анта
                   - numeric: правильное число
                 */}
                 {E2E_TEST_MODE && (
@@ -1669,7 +1682,7 @@ export default function SkillProofPage() {
                     </div>
                   </div>
 
-                  {/* Инструкция по загрузке сертификата на «Работа.ру» — рядом с кнопкой скачивания PDF */}
+                  {/* Инструкция по загрузке сертификата на «Ра��ота.ру» — рядом с кнопкой скачивания PDF */}
                   {correctAnswersCount >= TEST_CONFIG.PASS_THRESHOLD && certificateId && (
                     <div className="mb-4">
                       <RabotaUploadInstruction />

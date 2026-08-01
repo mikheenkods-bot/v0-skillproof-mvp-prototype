@@ -966,8 +966,8 @@ export default function SkillProofPage() {
                   <div className="flex items-start gap-3">
                     <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                     <p className="text-sm">
-                      Результат сохраняется и может быть передан работодателю при
-                      отборе кандидатов.
+                      Результат сохраняется и может быть передан по Вашему запросу
+                      работодателю, отбирающему кандидатов.
                     </p>
                   </div>
                   <div className="flex items-start gap-3">
@@ -1051,17 +1051,7 @@ export default function SkillProofPage() {
                     <span className="text-sm text-muted-foreground leading-relaxed">
                       Я согласен с правилами тестирования и наблюдением системы
                       прокторинга. Идентификация анонимная по коду, персональные
-                      данные не собираются — подробнее в{' '}
-                      <a
-                        href="/privacy"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary underline underline-offset-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        правилах обработки данных
-                      </a>
-                      .
+                      данные не собираются.
                     </span>
                   </label>
                 </div>

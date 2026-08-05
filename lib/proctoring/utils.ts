@@ -107,10 +107,13 @@ export function performSystemCheck(): {
     (document as Document & { $chrome_asyncScriptInfo?: unknown }).$chrome_asyncScriptInfo
   )
   
-  // Check for headless browser indicators
+  // Check for headless browser indicators.
+  // ВАЖНО: navigator.plugins здесь проверять НЕЛЬЗЯ — на мобильных браузерах
+  // (Android Chrome/Samsung) список плагинов пуст у всех, из-за чего каждый
+  // реальный телефон помечался как headless (100% ложных срабатываний в пилоте).
+  // Настоящая автоматизация ловится по HeadlessChrome в UA и navigator.webdriver.
   const isHeadless = !!(
     /HeadlessChrome/.test(ua) ||
-    !navigator.plugins?.length ||
     !navigator.languages?.length ||
     (navigator as Navigator & { webdriver?: boolean }).webdriver
   )

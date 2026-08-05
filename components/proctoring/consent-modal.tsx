@@ -38,6 +38,8 @@ interface ConsentModalProps {
   onRunSystemCheck: () => SystemCheckResult
   onAccept: (withCamera: boolean, withMic: boolean) => void
   onClose: () => void
+  /** Телеметрия: вызывается при показе каждого экрана модалки. */
+  onStepView?: (step: 'intro' | 'checks' | 'permissions') => void
 }
 
 // All proctoring checks with explanations
@@ -117,12 +119,13 @@ const optionalChecks = [
   }
 ]
 
-export function ConsentModal({ 
-  isOpen, 
-  systemCheck, 
-  onRunSystemCheck, 
-  onAccept, 
-  onClose 
+export function ConsentModal({
+  isOpen,
+  systemCheck,
+  onRunSystemCheck,
+  onAccept,
+  onClose,
+  onStepView,
 }: ConsentModalProps) {
   const [step, setStep] = useState<'intro' | 'checks' | 'permissions'>('intro')
   const [accepted, setAccepted] = useState(false)
@@ -155,6 +158,15 @@ export function ConsentModal({
     if (isOpen && step === 'permissions' && !checkResult) {
       runCheck()
     }
+  }, [isOpen, step])
+
+  // Телеметрия шагов: фиксируем, какой экран модалки кандидат реально увидел.
+  // onStepView НАМЕРЕННО не в зависимостях: если родитель передаст инлайн-функцию,
+  // её identity меняется на каждом рендере и события задвоятся.
+  useEffect(() => {
+    if (!isOpen) return
+    onStepView?.(step)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, step])
 
   useEffect(() => {

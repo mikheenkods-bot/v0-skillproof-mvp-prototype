@@ -619,6 +619,24 @@ export default function SkillProofPage() {
     setStage('preparation')
   }
 
+  // Телеметрия подворонки PIN -> старт: какой экран модалки согласия кандидат
+  // реально увидел. Fire-and-forget: сбой записи никогда не блокирует поток.
+  const handleConsentStepView = useCallback(
+    (step: 'intro' | 'checks' | 'permissions') => {
+      const eventByStep = {
+        intro: 'consent_shown',
+        checks: 'consent_details_shown',
+        permissions: 'consent_permissions_shown',
+      } as const
+      void trackEvent(eventByStep[step], {
+        attemptId,
+        specialization: 'skillproof',
+        visitorId: getVisitorId(),
+      })
+    },
+    [attemptId]
+  )
+
   // Disclaimer "Начать тестирование" handler. Anonymous flow by 4-digit PIN:
   //  1. Gate by getCompletionByPin — how many attempts this PIN already has.
   //     - exhausted (>= MAX) -> 'already-completed'.
@@ -846,9 +864,15 @@ export default function SkillProofPage() {
       <ConsentModal
         isOpen={showConsentModal && stage === 'consent'}
         onAccept={handleConsentAccept}
+        onStepView={handleConsentStepView}
         onClose={() => {
-          // «Не сейчас» — возвращаем кандидата на стартовый экран ввода
-          // данных (ФИО и почта), а не на главную страницу сайта.
+          // «Не сейчас» — возвращаем кандидата на стартовый экран.
+          // Явный сигнал отказа для воронки: закрыл модалку, не дав согласия.
+          void trackEvent('consent_dismissed', {
+            attemptId,
+            specialization: 'skillproof',
+            visitorId: getVisitorId(),
+          })
           setShowConsentModal(false)
           setStage('disclaimer')
         }}
@@ -1653,7 +1677,6 @@ export default function SkillProofPage() {
                       <p className="text-muted-foreground">
                         Идентификатор:{' '}
                         <span data-testid="result-certificate-id">{certificateId || '—'}</span>.
-                        Результат тестирования будет передан на платформу «Работа.ру».
                       </p>
                     </div>
                   </div>

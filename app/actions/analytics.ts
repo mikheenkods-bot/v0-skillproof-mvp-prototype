@@ -10,12 +10,23 @@ export type AnalyticsEventType =
   | 'test_started'
   | 'test_completed'
   | 'test_abandoned'
+  // Шаги модалки согласия на прокторинг — подворонка PIN -> старт теста.
+  // Пишутся в ту же таблицу analytics_events (event_type — обычный text,
+  // схема БД не меняется).
+  | 'consent_shown'
+  | 'consent_details_shown'
+  | 'consent_permissions_shown'
+  | 'consent_dismissed'
 
 const VALID_ANALYTICS_EVENTS = new Set<AnalyticsEventType>([
   'visit',
   'test_started',
   'test_completed',
   'test_abandoned',
+  'consent_shown',
+  'consent_details_shown',
+  'consent_permissions_shown',
+  'consent_dismissed',
 ])
 
 // Cap the serialized payload so analytics can't be used to stuff the DB.

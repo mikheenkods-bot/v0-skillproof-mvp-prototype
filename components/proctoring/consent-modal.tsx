@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { 
-  Shield, 
-  AlertTriangle, 
-  Ban, 
+  Shield,
+  Ban,
   Eye, 
   Brain, 
   Monitor, 
@@ -39,6 +38,8 @@ interface ConsentModalProps {
   onRunSystemCheck: () => SystemCheckResult
   onAccept: (withCamera: boolean, withMic: boolean) => void
   onClose: () => void
+  /** Телеметрия: вызывается при показе каждого экрана модалки. */
+  onStepView?: (step: 'intro' | 'checks' | 'permissions') => void
 }
 
 // All proctoring checks with explanations
@@ -118,12 +119,13 @@ const optionalChecks = [
   }
 ]
 
-export function ConsentModal({ 
-  isOpen, 
-  systemCheck, 
-  onRunSystemCheck, 
-  onAccept, 
-  onClose 
+export function ConsentModal({
+  isOpen,
+  systemCheck,
+  onRunSystemCheck,
+  onAccept,
+  onClose,
+  onStepView,
 }: ConsentModalProps) {
   const [step, setStep] = useState<'intro' | 'checks' | 'permissions'>('intro')
   const [accepted, setAccepted] = useState(false)
@@ -156,6 +158,15 @@ export function ConsentModal({
     if (isOpen && step === 'permissions' && !checkResult) {
       runCheck()
     }
+  }, [isOpen, step])
+
+  // Телеметрия шагов: фиксируем, какой экран модалки кандидат реально увидел.
+  // onStepView НАМЕРЕННО не в зависимостях: если родитель передаст инлайн-функцию,
+  // её identity меняется на каждом рендере и события задвоятся.
+  useEffect(() => {
+    if (!isOpen) return
+    onStepView?.(step)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, step])
 
   useEffect(() => {
@@ -298,26 +309,13 @@ export function ConsentModal({
         </div>
       </div>
 
-      {/* Main Warning */}
-      <div className="flex items-start gap-4 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
-        <AlertTriangle className="h-6 w-6 text-destructive shrink-0 mt-0.5" />
-        <div>
-          <p className="font-semibold text-destructive">Внимание!</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Мы анализируем даже <strong>скорость вашей печати</strong> и <strong>паттерны нажатий клавиш</strong>. 
-            Использование ChatGPT, копирование из других источников или помощь третьих лиц 
-            будет обнаружено. Результаты проверки честности видны работодателю.
-          </p>
-        </div>
-      </div>
-
       {/* CTA */}
       <div className="flex gap-3">
         <Button variant="outline" onClick={onClose} className="flex-1">
           Не сейчас
         </Button>
-        <Button onClick={() => setStep('checks')} className="flex-1">
-          Посмотреть все проверки
+        <Button onClick={() => setStep('permissions')} className="flex-1">
+          Продолжить
         </Button>
       </div>
     </motion.div>
@@ -572,7 +570,7 @@ export function ConsentModal({
       </label>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={() => setStep('checks')}>
+        <Button variant="outline" onClick={() => setStep('intro')}>
           Назад
         </Button>
         <Button 
@@ -620,15 +618,16 @@ export function ConsentModal({
                 </div>
               </div>
               
-              {/* Progress */}
+              {/* Progress. Экран 'checks' (полный список проверок) убран из
+                  обязательного пути — прогресс считаем по двум реальным шагам. */}
               <div className="flex gap-1 mt-4">
-                {['intro', 'checks', 'permissions'].map((s, i) => (
-                  <div 
+                {['intro', 'permissions'].map((s, i) => (
+                  <div
                     key={s}
                     className={cn(
                       "h-1 flex-1 rounded-full transition-colors",
-                      ['intro', 'checks', 'permissions'].indexOf(step) >= i 
-                        ? "bg-primary" 
+                      (step === 'permissions' ? 1 : 0) >= i
+                        ? "bg-primary"
                         : "bg-muted"
                     )}
                   />
